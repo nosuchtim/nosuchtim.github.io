@@ -66,8 +66,6 @@ function addpostrc(f) {
 #desc	and if that doesn't exist, use some defaults
 function dokeylocal() {
 
-	# forcein = "01. Internal MIDI"
-
 	forceout = "Springbeats vMIDI1"
 	outp = outport(forceout)
 	
