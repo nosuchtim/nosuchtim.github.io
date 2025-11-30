@@ -334,7 +334,7 @@
                     const manifestController = new AbortController();
                     const manifestTimeout = setTimeout(() => manifestController.abort(), 10000);
 
-                    const response = await fetch('../lib/lib_manifest.json', {
+                    const response = await fetch('lib/lib_manifest.json', {
                         signal: manifestController.signal
                     });
                     clearTimeout(manifestTimeout);
@@ -351,7 +351,7 @@
 
                         await Promise.all(batch.map(async (filename) => {
                             try {
-                                const fileResponse = await fetch(`../lib/${filename}`);
+                                const fileResponse = await fetch(`lib/${filename}`);
                                 if (!fileResponse.ok) {
                                     throw new Error(`HTTP ${fileResponse.status}`);
                                 }
@@ -417,7 +417,7 @@
 
                     // Load page files from manifest (only if not already in IndexedDB)
                     try {
-                        const pagesResponse = await fetch('../local/pages/pages_manifest.json');
+                        const pagesResponse = await fetch('local/pages/pages_manifest.json');
                         const pageFiles = await pagesResponse.json();
                         console.log(`Found ${pageFiles.length} page files in manifest`);
 
@@ -434,7 +434,7 @@
                                 continue;
                             }
                             try {
-                                const fileResponse = await fetch(`../local/pages/${filename}`);
+                                const fileResponse = await fetch(`local/pages/${filename}`);
                                 const content = await fileResponse.arrayBuffer();
                                 const uint8Array = new Uint8Array(content);
                                 Module.FS.writeFile(`/keykit/local/pages/${filename}`, uint8Array);
@@ -668,7 +668,7 @@
                     console.log('Created /keykit/music directory');
 
                     try {
-                        const musicResponse = await fetch('../music/music_manifest.json');
+                        const musicResponse = await fetch('music/music_manifest.json');
                         const musicFiles = await musicResponse.json();
                         console.log(`Found ${musicFiles.length} music files in manifest`);
 
@@ -678,7 +678,7 @@
 
                             await Promise.all(batch.map(async (filename) => {
                                 try {
-                                    const fileResponse = await fetch(`../music/${filename}`);
+                                    const fileResponse = await fetch(`music/${filename}`);
                                     const content = await fileResponse.arrayBuffer();
                                     const uint8Array = new Uint8Array(content);
 
