@@ -164,8 +164,6 @@
 </head>
 <body>
     <div class="controls">
-        <button id="addRandomBall">Random Ball</button>
-        <button id="addRandomLine">Random Line</button>
         <button id="generateMaze">Generate Maze</button>
         <button id="clearLines">Clear Lines</button>
         <button id="clearBalls">Clear Balls</button>
@@ -718,24 +716,6 @@
         });
 
         // Button handlers
-        document.getElementById('addRandomBall').addEventListener('click', () => {
-            const x = Math.random() * (canvas.width - 100) + 50;
-            const y = Math.random() * (canvas.height - 100) + 50;
-            balls.push(new Ball(x, y));
-        });
-
-        document.getElementById('addRandomLine').addEventListener('click', () => {
-            const x1 = Math.random() * (canvas.width - 100) + 50;
-            const y1 = Math.random() * (canvas.height - 100) + 50;
-            const angle = Math.random() * Math.PI * 2;
-            const length = 80 + Math.random() * 150;
-            const x2 = x1 + Math.cos(angle) * length;
-            const y2 = y1 + Math.sin(angle) * length;
-            const line = { x1, y1, x2, y2 };
-            assignNoteToLine(line);
-            lines.push(line);
-        });
-
         document.getElementById('generateMaze').addEventListener('click', () => {
             // Clear existing lines
             lines.length = 0;
