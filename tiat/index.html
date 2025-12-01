@@ -1,0 +1,901 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Draw Lines & Bouncing Balls</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap');
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #0a0a0f;
+            overflow: hidden;
+            font-family: 'Orbitron', sans-serif;
+        }
+
+        canvas {
+            display: block;
+            cursor: crosshair;
+        }
+
+        .controls {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            gap: 12px;
+            z-index: 100;
+        }
+
+        button {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border: 1px solid #00fff5;
+            color: #00fff5;
+            padding: 12px 24px;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 12px;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 15px rgba(0, 255, 245, 0.2),
+                        inset 0 0 15px rgba(0, 255, 245, 0.1);
+        }
+
+        button:hover {
+            background: linear-gradient(135deg, #16213e 0%, #1a1a2e 100%);
+            box-shadow: 0 0 25px rgba(0, 255, 245, 0.4),
+                        inset 0 0 25px rgba(0, 255, 245, 0.2);
+            transform: translateY(-2px);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        .instructions {
+            position: fixed;
+            bottom: 20px;
+            left: 20px;
+            color: rgba(255, 255, 255, 0.5);
+            font-size: 11px;
+            letter-spacing: 1px;
+            line-height: 1.8;
+        }
+
+        .stats {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            color: #ff00aa;
+            font-size: 11px;
+            text-align: right;
+            letter-spacing: 1px;
+            text-shadow: 0 0 10px rgba(255, 0, 170, 0.5);
+        }
+
+        .sliders {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            z-index: 100;
+        }
+
+        .slider-group {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .slider-group label {
+            color: #00fff5;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .slider-group input[type="range"] {
+            width: 150px;
+            height: 6px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: linear-gradient(90deg, #1a1a2e 0%, #16213e 100%);
+            border: 1px solid #00fff5;
+            border-radius: 3px;
+            outline: none;
+            cursor: pointer;
+        }
+
+        .slider-group input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            background: #00fff5;
+            border-radius: 50%;
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(0, 255, 245, 0.6);
+        }
+
+        .slider-group input[type="range"]::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            background: #00fff5;
+            border-radius: 50%;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 0 10px rgba(0, 255, 245, 0.6);
+        }
+
+        .slider-group select {
+            width: 150px;
+            padding: 8px;
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border: 1px solid #00fff5;
+            color: #00fff5;
+            font-family: 'Orbitron', sans-serif;
+            font-size: 10px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            cursor: pointer;
+            outline: none;
+            box-shadow: 0 0 10px rgba(0, 255, 245, 0.2);
+        }
+
+        .slider-group select:hover {
+            box-shadow: 0 0 15px rgba(0, 255, 245, 0.4);
+        }
+
+        .slider-group select option {
+            background: #1a1a2e;
+            color: #00fff5;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <button id="addRandomBall">Random Ball</button>
+        <button id="addRandomLine">Random Line</button>
+        <button id="generateMaze">Generate Maze</button>
+        <button id="clearLines">Clear Lines</button>
+        <button id="clearBalls">Clear Balls</button>
+    </div>
+
+    <div class="stats">
+        <div>BALLS: <span id="ballCount">0</span></div>
+        <div>LINES: <span id="lineCount">0</span></div>
+    </div>
+
+    <div class="instructions">
+        CLICK + DRAG to draw lines<br>
+        CLICK to spawn ball<br>
+        Use buttons to add/clear
+    </div>
+
+    <div class="sliders">
+        <div class="slider-group">
+            <label>Scale</label>
+            <select id="scaleSelect">
+                <option value="major">Major</option>
+                <option value="minor">Minor</option>
+                <option value="arabian">Arabian</option>
+                <option value="chromatic">Chromatic</option>
+            </select>
+        </div>
+        <div class="slider-group">
+            <label>Visualization Size: <span id="vizSizeValue">100</span>%</label>
+            <input type="range" id="vizSize" min="10" max="300" value="100">
+        </div>
+        <div class="slider-group">
+            <label>Ball Speed: <span id="ballSpeedValue">100</span>%</label>
+            <input type="range" id="ballSpeed" min="10" max="300" value="100">
+        </div>
+    </div>
+
+    <canvas id="canvas"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        // Resize canvas to full window
+        function resize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        resize();
+        window.addEventListener('resize', resize);
+
+        // State
+        const lines = [];
+        const balls = [];
+        let isDrawing = false;
+        let startPoint = null;
+        let currentPoint = null;
+
+        // Physics constants
+        const GRAVITY = 0;
+        const FRICTION = 1.0;
+        const BOUNCE_DAMPING = 1.0;
+        const BALL_RADIUS = 12;
+
+        // Adjustable settings
+        let vizSizeMultiplier = 1.0;
+        let ballSpeedMultiplier = 1.0;
+
+        // Slider controls
+        document.getElementById('vizSize').addEventListener('input', (e) => {
+            vizSizeMultiplier = e.target.value / 100;
+            document.getElementById('vizSizeValue').textContent = e.target.value;
+        });
+
+        document.getElementById('ballSpeed').addEventListener('input', (e) => {
+            const newMultiplier = e.target.value / 100;
+            // Adjust existing ball velocities
+            const ratio = newMultiplier / ballSpeedMultiplier;
+            for (const ball of balls) {
+                ball.vx *= ratio;
+                ball.vy *= ratio;
+            }
+            ballSpeedMultiplier = newMultiplier;
+            document.getElementById('ballSpeedValue').textContent = e.target.value;
+        });
+
+        // Audio setup with Tone.js
+        const synth = new Tone.PolySynth(Tone.Synth, {
+            oscillator: { type: 'sine' },
+            envelope: {
+                attack: 0.01,
+                decay: 0.2,
+                sustain: 0.1,
+                release: 0.3
+            }
+        }).toDestination();
+        synth.volume.value = -12;
+
+        // Musical scales (3 octaves each - low at bottom, high at top)
+        const scales = {
+            major: [
+                'C3', 'D3', 'E3', 'F3', 'G3', 'A3', 'B3',
+                'C4', 'D4', 'E4', 'F4', 'G4', 'A4', 'B4',
+                'C5', 'D5', 'E5', 'F5', 'G5', 'A5', 'B5'
+            ],
+            minor: [
+                'C3', 'D3', 'Eb3', 'F3', 'G3', 'Ab3', 'Bb3',
+                'C4', 'D4', 'Eb4', 'F4', 'G4', 'Ab4', 'Bb4',
+                'C5', 'D5', 'Eb5', 'F5', 'G5', 'Ab5', 'Bb5'
+            ],
+            arabian: [
+                'C3', 'Db3', 'E3', 'F3', 'G3', 'Ab3', 'B3',
+                'C4', 'Db4', 'E4', 'F4', 'G4', 'Ab4', 'B4',
+                'C5', 'Db5', 'E5', 'F5', 'G5', 'Ab5', 'B5'
+            ],
+            chromatic: [
+                'C3', 'Db3', 'D3', 'Eb3', 'E3', 'F3', 'Gb3', 'G3', 'Ab3', 'A3', 'Bb3', 'B3',
+                'C4', 'Db4', 'D4', 'Eb4', 'E4', 'F4', 'Gb4', 'G4', 'Ab4', 'A4', 'Bb4', 'B4',
+                'C5', 'Db5', 'D5', 'Eb5', 'E5', 'F5', 'Gb5', 'G5', 'Ab5', 'A5', 'Bb5', 'B5'
+            ]
+        };
+
+        let currentScale = scales.major;
+
+        // Quantization settings
+        const BPM = 120;
+        Tone.Transport.bpm.value = BPM;
+        Tone.Transport.start();
+
+        // Start audio context on first user interaction
+        let audioStarted = false;
+        async function startAudio() {
+            if (!audioStarted && Tone.context.state !== 'running') {
+                await Tone.start();
+                audioStarted = true;
+                console.log('Audio started');
+            } else if (Tone.context.state === 'running') {
+                audioStarted = true;
+            }
+        }
+        
+        // Add listeners to multiple events to ensure audio starts
+        ['click', 'mousedown', 'touchstart', 'keydown'].forEach(event => {
+            document.addEventListener(event, startAudio);
+        });
+
+        // Track pending notes for quantization
+        const pendingNotes = new Set();
+
+        // Play a specific note (quantized to 16th notes)
+        function playNote(note) {
+            // Try to start audio if not started
+            if (!audioStarted) {
+                startAudio();
+                return;
+            }
+            
+            // Add note to pending set (avoids duplicates within same quantization window)
+            if (!pendingNotes.has(note)) {
+                pendingNotes.add(note);
+                try {
+                    // Quantize to next 16th note
+                    const quantizedTime = Tone.Transport.nextSubdivision('16n');
+                    synth.triggerAttackRelease(note, '8n', quantizedTime);
+                    
+                    // Remove from pending after it plays
+                    Tone.Transport.scheduleOnce(() => {
+                        pendingNotes.delete(note);
+                    }, quantizedTime);
+                } catch (e) {
+                    console.log('Audio error:', e);
+                    pendingNotes.delete(note);
+                }
+            }
+        }
+
+        // Assign a note based on the vertical position of the line (center point)
+        function assignNoteToLine(line) {
+            // Calculate the vertical center of the line
+            const centerY = (line.y1 + line.y2) / 2;
+            // Invert: top of screen (low Y) = high notes, bottom (high Y) = low notes
+            const normalizedY = 1 - (centerY / canvas.height);
+            const noteIndex = Math.floor(normalizedY * currentScale.length);
+            line.note = currentScale[Math.min(Math.max(noteIndex, 0), currentScale.length - 1)];
+        }
+
+        // Re-assign notes to all existing lines when scale changes
+        function reassignAllNotes() {
+            for (const line of lines) {
+                assignNoteToLine(line);
+            }
+        }
+
+        // Scale selector handler
+        document.getElementById('scaleSelect').addEventListener('change', (e) => {
+            currentScale = scales[e.target.value];
+            reassignAllNotes();
+        });
+
+        // Collision effects array
+        const collisionEffects = [];
+
+        // Collision effect class
+        class CollisionEffect {
+            constructor(x, y, color) {
+                this.x = x;
+                this.y = y;
+                this.color = color;
+                this.size = 3 * vizSizeMultiplier;
+                this.maxSize = (60 + Math.random() * 48) * vizSizeMultiplier;
+                this.alpha = 1;
+                this.shape = ['circle', 'triangle', 'square'][Math.floor(Math.random() * 3)];
+                this.rotation = Math.random() * Math.PI * 2;
+                this.rotationSpeed = (Math.random() - 0.5) * 0.1;
+                this.createdAt = performance.now();
+                this.duration = 2000; // 2 seconds
+            }
+
+            update() {
+                const elapsed = performance.now() - this.createdAt;
+                const progress = elapsed / this.duration;
+                
+                // Grow throughout the duration
+                this.size = 3 + (this.maxSize - 3) * Math.min(progress, 1);
+                
+                // Start fading after 50% of duration
+                if (progress > 0.5) {
+                    this.alpha = 1 - ((progress - 0.5) / 0.5);
+                }
+                
+                this.rotation += this.rotationSpeed;
+                return progress < 1;
+            }
+
+            draw() {
+                ctx.save();
+                ctx.translate(this.x, this.y);
+                ctx.rotate(this.rotation);
+                ctx.globalAlpha = Math.min(this.alpha, 1) * 0.5;
+                ctx.strokeStyle = this.color;
+                ctx.lineWidth = 2;
+                ctx.shadowColor = this.color;
+                ctx.shadowBlur = 15;
+
+                if (this.shape === 'circle') {
+                    ctx.beginPath();
+                    ctx.arc(0, 0, this.size, 0, Math.PI * 2);
+                    ctx.stroke();
+                } else if (this.shape === 'triangle') {
+                    ctx.beginPath();
+                    for (let i = 0; i < 3; i++) {
+                        const angle = (i * 2 * Math.PI / 3) - Math.PI / 2;
+                        const px = Math.cos(angle) * this.size;
+                        const py = Math.sin(angle) * this.size;
+                        if (i === 0) ctx.moveTo(px, py);
+                        else ctx.lineTo(px, py);
+                    }
+                    ctx.closePath();
+                    ctx.stroke();
+                } else if (this.shape === 'square') {
+                    ctx.strokeRect(-this.size, -this.size, this.size * 2, this.size * 2);
+                }
+
+                ctx.restore();
+                ctx.globalAlpha = 1;
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // Spawn collision effect
+        function spawnCollisionEffect(x, y, color) {
+            collisionEffects.push(new CollisionEffect(x, y, color));
+        }
+
+        // Ball colors - vibrant neon palette
+        const ballColors = [
+            { main: '#ff00aa', glow: 'rgba(255, 0, 170, 0.6)' },
+            { main: '#00ff88', glow: 'rgba(0, 255, 136, 0.6)' },
+            { main: '#ffaa00', glow: 'rgba(255, 170, 0, 0.6)' },
+            { main: '#aa00ff', glow: 'rgba(170, 0, 255, 0.6)' },
+            { main: '#00aaff', glow: 'rgba(0, 170, 255, 0.6)' },
+            { main: '#ff5500', glow: 'rgba(255, 85, 0, 0.6)' },
+        ];
+
+        // Ball class
+        class Ball {
+            constructor(x, y) {
+                this.x = x;
+                this.y = y;
+                this.vx = (Math.random() - 0.5) * 8 * ballSpeedMultiplier;
+                this.vy = (Math.random() - 0.5) * 4 * ballSpeedMultiplier;
+                this.radius = BALL_RADIUS;
+                const colorSet = ballColors[Math.floor(Math.random() * ballColors.length)];
+                this.color = colorSet.main;
+                this.glow = colorSet.glow;
+            }
+
+            update() {
+                // Apply gravity
+                this.vy += GRAVITY;
+
+                // Apply friction
+                this.vx *= FRICTION;
+                this.vy *= FRICTION;
+
+                // Update position
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // Wall collisions
+                if (this.x - this.radius < 0) {
+                    this.x = this.radius;
+                    this.vx *= -BOUNCE_DAMPING;
+                }
+                if (this.x + this.radius > canvas.width) {
+                    this.x = canvas.width - this.radius;
+                    this.vx *= -BOUNCE_DAMPING;
+                }
+                if (this.y - this.radius < 0) {
+                    this.y = this.radius;
+                    this.vy *= -BOUNCE_DAMPING;
+                }
+                if (this.y + this.radius > canvas.height) {
+                    this.y = canvas.height - this.radius;
+                    this.vy *= -BOUNCE_DAMPING;
+                }
+
+                // Line collisions
+                for (const line of lines) {
+                    this.checkLineCollision(line);
+                }
+            }
+
+            checkLineCollision(line) {
+                const { x1, y1, x2, y2 } = line;
+
+                // Vector from line start to end
+                const dx = x2 - x1;
+                const dy = y2 - y1;
+                const lineLength = Math.sqrt(dx * dx + dy * dy);
+
+                if (lineLength === 0) return;
+
+                // Normalized line direction
+                const nx = dx / lineLength;
+                const ny = dy / lineLength;
+
+                // Vector from line start to ball center
+                const bx = this.x - x1;
+                const by = this.y - y1;
+
+                // Project ball onto line
+                const projection = bx * nx + by * ny;
+
+                // Clamp projection to line segment
+                const clampedProjection = Math.max(0, Math.min(lineLength, projection));
+
+                // Closest point on line to ball
+                const closestX = x1 + nx * clampedProjection;
+                const closestY = y1 + ny * clampedProjection;
+
+                // Distance from ball to closest point
+                const distX = this.x - closestX;
+                const distY = this.y - closestY;
+                const distance = Math.sqrt(distX * distX + distY * distY);
+
+                // Check collision
+                if (distance < this.radius && distance > 0) {
+                    // Normal from line to ball
+                    const normalX = distX / distance;
+                    const normalY = distY / distance;
+
+                    // Push ball out of line
+                    const overlap = this.radius - distance;
+                    this.x += normalX * overlap;
+                    this.y += normalY * overlap;
+
+                    // Reflect velocity
+                    const dotProduct = this.vx * normalX + this.vy * normalY;
+                    this.vx -= 2 * dotProduct * normalX;
+                    this.vy -= 2 * dotProduct * normalY;
+
+                    // Apply damping
+                    this.vx *= BOUNCE_DAMPING;
+                    this.vy *= BOUNCE_DAMPING;
+
+                    // Play the note assigned to this line
+                    if (line.note) {
+                        playNote(line.note);
+                    }
+
+                    // Spawn visual effect at collision point
+                    spawnCollisionEffect(this.x, this.y, this.color);
+                }
+            }
+
+            draw() {
+                // Glow effect
+                ctx.shadowColor = this.glow;
+                ctx.shadowBlur = 20;
+
+                // Ball gradient
+                const gradient = ctx.createRadialGradient(
+                    this.x - this.radius * 0.3,
+                    this.y - this.radius * 0.3,
+                    0,
+                    this.x,
+                    this.y,
+                    this.radius
+                );
+                gradient.addColorStop(0, '#ffffff');
+                gradient.addColorStop(0.3, this.color);
+                gradient.addColorStop(1, this.color);
+
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.radius, 0, Math.PI * 2);
+                ctx.fillStyle = gradient;
+                ctx.fill();
+
+                // Reset shadow
+                ctx.shadowBlur = 0;
+            }
+        }
+
+        // Drawing functions
+        function drawLine(x1, y1, x2, y2, isPreview = false) {
+            ctx.shadowColor = 'rgba(0, 255, 245, 0.8)';
+            ctx.shadowBlur = isPreview ? 10 : 15;
+
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.strokeStyle = isPreview ? 'rgba(0, 255, 245, 0.5)' : '#00fff5';
+            ctx.lineWidth = 3;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+
+            ctx.shadowBlur = 0;
+        }
+
+        function drawGrid() {
+            ctx.strokeStyle = 'rgba(0, 255, 245, 0.03)';
+            ctx.lineWidth = 1;
+
+            const gridSize = 50;
+            for (let x = 0; x < canvas.width; x += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, canvas.height);
+                ctx.stroke();
+            }
+            for (let y = 0; y < canvas.height; y += gridSize) {
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width, y);
+                ctx.stroke();
+            }
+        }
+
+        // Main render loop
+        function render() {
+            // Clear canvas with fade effect (lower alpha = longer trails)
+            ctx.fillStyle = 'rgba(10, 10, 15, 0.08)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw grid
+            drawGrid();
+
+            // Draw all stored lines
+            for (const line of lines) {
+                drawLine(line.x1, line.y1, line.x2, line.y2);
+            }
+
+            // Draw preview line while drawing
+            if (isDrawing && startPoint && currentPoint) {
+                drawLine(startPoint.x, startPoint.y, currentPoint.x, currentPoint.y, true);
+            }
+
+            // Update and draw balls
+            for (const ball of balls) {
+                ball.update();
+                ball.draw();
+            }
+
+            // Update and draw collision effects
+            for (let i = collisionEffects.length - 1; i >= 0; i--) {
+                const effect = collisionEffects[i];
+                if (!effect.update()) {
+                    collisionEffects.splice(i, 1);
+                } else {
+                    effect.draw();
+                }
+            }
+
+            // Update stats
+            document.getElementById('ballCount').textContent = balls.length;
+            document.getElementById('lineCount').textContent = lines.length;
+
+            requestAnimationFrame(render);
+        }
+
+        // Event handlers
+        canvas.addEventListener('mousedown', (e) => {
+            isDrawing = true;
+            startPoint = { x: e.clientX, y: e.clientY };
+            currentPoint = { x: e.clientX, y: e.clientY };
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDrawing) {
+                currentPoint = { x: e.clientX, y: e.clientY };
+            }
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (isDrawing && startPoint) {
+                const endPoint = { x: e.clientX, y: e.clientY };
+                const dx = endPoint.x - startPoint.x;
+                const dy = endPoint.y - startPoint.y;
+                const length = Math.sqrt(dx * dx + dy * dy);
+
+                if (length > 10) {
+                    // Add line if dragged far enough
+                    const line = {
+                        x1: startPoint.x,
+                        y1: startPoint.y,
+                        x2: endPoint.x,
+                        y2: endPoint.y
+                    };
+                    assignNoteToLine(line);
+                    lines.push(line);
+                } else {
+                    // Add ball if just clicked in place
+                    balls.push(new Ball(e.clientX, e.clientY));
+                }
+            }
+            isDrawing = false;
+            startPoint = null;
+            currentPoint = null;
+        });
+
+        canvas.addEventListener('mouseleave', () => {
+            isDrawing = false;
+            startPoint = null;
+            currentPoint = null;
+        });
+
+        // Double-click to spawn ball
+        canvas.addEventListener('dblclick', (e) => {
+            balls.push(new Ball(e.clientX, e.clientY));
+        });
+
+        // Button handlers
+        document.getElementById('addRandomBall').addEventListener('click', () => {
+            const x = Math.random() * (canvas.width - 100) + 50;
+            const y = Math.random() * (canvas.height - 100) + 50;
+            balls.push(new Ball(x, y));
+        });
+
+        document.getElementById('addRandomLine').addEventListener('click', () => {
+            const x1 = Math.random() * (canvas.width - 100) + 50;
+            const y1 = Math.random() * (canvas.height - 100) + 50;
+            const angle = Math.random() * Math.PI * 2;
+            const length = 80 + Math.random() * 150;
+            const x2 = x1 + Math.cos(angle) * length;
+            const y2 = y1 + Math.sin(angle) * length;
+            const line = { x1, y1, x2, y2 };
+            assignNoteToLine(line);
+            lines.push(line);
+        });
+
+        document.getElementById('generateMaze').addEventListener('click', () => {
+            // Clear existing lines
+            lines.length = 0;
+
+            const gridSize = 8;
+            const topMargin = 80; // Extra space for controls at top
+            const margin = 50;
+            const availableHeight = canvas.height - topMargin - margin;
+            const availableWidth = canvas.width - margin * 2;
+            const mazeSize = Math.min(availableWidth, availableHeight);
+            const cellSize = mazeSize / gridSize;
+            const offsetX = (canvas.width - mazeSize) / 2;
+            const offsetY = topMargin + (availableHeight - mazeSize) / 2;
+
+            // Initialize grid for maze generation (walls on all sides)
+            const walls = {
+                horizontal: [], // horizontal walls below each cell
+                vertical: []    // vertical walls to the right of each cell
+            };
+
+            // Initialize all walls as present
+            for (let y = 0; y <= gridSize; y++) {
+                walls.horizontal[y] = [];
+                for (let x = 0; x < gridSize; x++) {
+                    walls.horizontal[y][x] = true;
+                }
+            }
+            for (let y = 0; y < gridSize; y++) {
+                walls.vertical[y] = [];
+                for (let x = 0; x <= gridSize; x++) {
+                    walls.vertical[y][x] = true;
+                }
+            }
+
+            // Generate maze using recursive backtracking
+            const visited = [];
+            for (let y = 0; y < gridSize; y++) {
+                visited[y] = [];
+                for (let x = 0; x < gridSize; x++) {
+                    visited[y][x] = false;
+                }
+            }
+
+            function carve(x, y) {
+                visited[y][x] = true;
+                const directions = [
+                    { dx: 0, dy: -1, wall: 'horizontal', wx: x, wy: y },      // up
+                    { dx: 0, dy: 1, wall: 'horizontal', wx: x, wy: y + 1 },   // down
+                    { dx: -1, dy: 0, wall: 'vertical', wx: x, wy: y },        // left
+                    { dx: 1, dy: 0, wall: 'vertical', wx: x + 1, wy: y }      // right
+                ];
+
+                // Shuffle directions
+                for (let i = directions.length - 1; i > 0; i--) {
+                    const j = Math.floor(Math.random() * (i + 1));
+                    [directions[i], directions[j]] = [directions[j], directions[i]];
+                }
+
+                for (const dir of directions) {
+                    const nx = x + dir.dx;
+                    const ny = y + dir.dy;
+
+                    if (nx >= 0 && nx < gridSize && ny >= 0 && ny < gridSize && !visited[ny][nx]) {
+                        // Remove wall
+                        walls[dir.wall][dir.wy][dir.wx] = false;
+                        carve(nx, ny);
+                    }
+                }
+            }
+
+            // Start from random cell
+            carve(Math.floor(Math.random() * gridSize), Math.floor(Math.random() * gridSize));
+
+            // Convert walls to lines
+            // Horizontal walls
+            for (let y = 0; y <= gridSize; y++) {
+                for (let x = 0; x < gridSize; x++) {
+                    if (walls.horizontal[y][x]) {
+                        const x1 = offsetX + x * cellSize;
+                        const y1 = offsetY + y * cellSize;
+                        const x2 = offsetX + (x + 1) * cellSize;
+                        const y2 = y1;
+                        const line = { x1, y1, x2, y2 };
+                        assignNoteToLine(line);
+                        lines.push(line);
+                    }
+                }
+            }
+
+            // Vertical walls
+            for (let y = 0; y < gridSize; y++) {
+                for (let x = 0; x <= gridSize; x++) {
+                    if (walls.vertical[y][x]) {
+                        const x1 = offsetX + x * cellSize;
+                        const y1 = offsetY + y * cellSize;
+                        const x2 = x1;
+                        const y2 = offsetY + (y + 1) * cellSize;
+                        const line = { x1, y1, x2, y2 };
+                        assignNoteToLine(line);
+                        lines.push(line);
+                    }
+                }
+            }
+        });
+
+        document.getElementById('clearLines').addEventListener('click', () => {
+            lines.length = 0;
+        });
+
+        document.getElementById('clearBalls').addEventListener('click', () => {
+            balls.length = 0;
+        });
+
+        // Touch support
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const touch = e.touches[0];
+            isDrawing = true;
+            startPoint = { x: touch.clientX, y: touch.clientY };
+            currentPoint = { x: touch.clientX, y: touch.clientY };
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (isDrawing) {
+                const touch = e.touches[0];
+                currentPoint = { x: touch.clientX, y: touch.clientY };
+            }
+        });
+
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+            if (isDrawing && startPoint && currentPoint) {
+                const dx = currentPoint.x - startPoint.x;
+                const dy = currentPoint.y - startPoint.y;
+                const length = Math.sqrt(dx * dx + dy * dy);
+
+                if (length > 10) {
+                    // Add line if dragged far enough
+                    const line = {
+                        x1: startPoint.x,
+                        y1: startPoint.y,
+                        x2: currentPoint.x,
+                        y2: currentPoint.y
+                    };
+                    assignNoteToLine(line);
+                    lines.push(line);
+                } else {
+                    // Add ball if just tapped in place
+                    balls.push(new Ball(startPoint.x, startPoint.y));
+                }
+            }
+            isDrawing = false;
+            startPoint = null;
+            currentPoint = null;
+        });
+
+        // Start the animation
+        render();
+    </script>
+</body>
+</html>
+
