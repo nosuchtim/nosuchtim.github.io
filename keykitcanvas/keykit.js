@@ -5242,7 +5242,7 @@ async function createWasm() {
                           // Call C callback if available
                           if (typeof Module !== 'undefined' && Module.ccall) {
                               try {
-                                  Module.ccall('mdep_on_nats_message', null,
+                                  Module.ccall('jscallback_on_nats_message', null,
                                                ['string', 'string'],
                                                [msg.subject, data]);
                                   console.log('[NATS] Successfully called C callback');
@@ -5323,7 +5323,7 @@ async function createWasm() {
                       // Call C callback
                       if (typeof Module !== 'undefined' && Module.ccall) {
                           try {
-                              Module.ccall('mdep_on_nats_message', null,
+                              Module.ccall('jscallback_on_nats_message', null,
                                            ['string', 'string'],
                                            [msg.subject, data]);
                           } catch (e) {
@@ -5375,7 +5375,7 @@ async function createWasm() {
               // Call back into C code with MIDI data
               if (typeof Module !== 'undefined' && Module.ccall) {
                   try {
-                      Module.ccall('mdep_on_midi_message', null,
+                      Module.ccall('jscallback_on_midi_message', null,
                                    ['number', 'number', 'number', 'number'],
                                    [index, status, data1, data2]);
                       // console.log('[MIDI IN] Successfully called C callback');
@@ -5523,7 +5523,7 @@ async function createWasm() {
   
               // Call C callback with modifier key state
               if (typeof Module !== 'undefined' && Module.ccall) {
-                  Module.ccall('mdep_on_key_event', null,
+                  Module.ccall('jscallback_on_key_event', null,
                                ['number', 'number', 'number', 'number', 'number'],
                                [1, keyCode, e.ctrlKey ? 1 : 0, e.shiftKey ? 1 : 0, e.altKey ? 1 : 0]);
               }
@@ -5548,7 +5548,7 @@ async function createWasm() {
               }
   
               if (typeof Module !== 'undefined' && Module.ccall) {
-                  Module.ccall('mdep_on_key_event', null,
+                  Module.ccall('jscallback_on_key_event', null,
                                ['number', 'number', 'number', 'number', 'number'],
                                [0, keyCode, e.ctrlKey ? 1 : 0, e.shiftKey ? 1 : 0, e.altKey ? 1 : 0]);
               }
@@ -5597,7 +5597,7 @@ async function createWasm() {
   
               // Call C callback if defined
               if (typeof Module !== 'undefined' && Module.ccall) {
-                  Module.ccall('mdep_on_mouse_move', null,
+                  Module.ccall('jscallback_on_mouse_move', null,
                                ['number', 'number', 'number'],
                                [window.keykitMouseX, window.keykitMouseY, window.keykitMouseModifiers]);
               }
@@ -5614,7 +5614,7 @@ async function createWasm() {
               window.keykitMouseButtons |= (1 << e.button);
   
               if (typeof Module !== 'undefined' && Module.ccall) {
-                  Module.ccall('mdep_on_mouse_button', null,
+                  Module.ccall('jscallback_on_mouse_button', null,
                                ['number', 'number', 'number', 'number', 'number'],
                                [1, window.keykitMouseX, window.keykitMouseY, window.keykitMouseButtons, window.keykitMouseModifiers]);
               }
@@ -5630,7 +5630,7 @@ async function createWasm() {
               window.keykitMouseButtons &= ~(1 << e.button);
   
               if (typeof Module !== 'undefined' && Module.ccall) {
-                  Module.ccall('mdep_on_mouse_button', null,
+                  Module.ccall('jscallback_on_mouse_button', null,
                                ['number', 'number', 'number', 'number', 'number'],
                                [0, window.keykitMouseX, window.keykitMouseY, window.keykitMouseButtons, window.keykitMouseModifiers]);
               }
@@ -5656,6 +5656,70 @@ async function createWasm() {
               return -1;
           });
       };
+
+  function _js_webgl_clear(r, g, b) {
+          if (window.webglWindow && !window.webglWindow.closed && window.webglWindow.glClear) {
+              window.webglWindow.glClear(r, g, b);
+          }
+      }
+
+  function _js_webgl_create_pass(source_ptr) {
+          if (!window.webglWindow || window.webglWindow.closed || !window.webglWindow.glCreatePass) {
+              return -1;
+          }
+          var source = UTF8ToString(source_ptr);
+          return window.webglWindow.glCreatePass(source);
+      }
+
+  function _js_webgl_draw_line(x0, y0, x1, y1) {
+          if (window.webglWindow && !window.webglWindow.closed && window.webglWindow.glLine) {
+              window.webglWindow.glLine(x0, y0, x1, y1);
+          }
+      }
+
+  function _js_webgl_run_pass(pass_id, to_screen) {
+          if (!window.webglWindow || window.webglWindow.closed || !window.webglWindow.glRunPass) {
+              return;
+          }
+          window.webglWindow.glRunPass(pass_id, to_screen !== 0);
+      }
+
+  function _js_webgl_set_color(r, g, b, a) {
+          if (window.webglWindow && !window.webglWindow.closed && window.webglWindow.glSetColor) {
+              window.webglWindow.glSetColor(r, g, b, a);
+          }
+      }
+
+  function _js_webgl_set_pass_order(ids_ptr, count) {
+          if (!window.webglWindow || window.webglWindow.closed || !window.webglWindow.glSetPassOrder) {
+              return;
+          }
+          var ids = [];
+          for (var i = 0; i < count; i++) {
+              ids.push(getValue(ids_ptr + i * 4, 'i32'));
+          }
+          window.webglWindow.glSetPassOrder(ids);
+      }
+
+  function _js_webgl_set_uniform_float(pass_id, name_ptr, value) {
+          if (!window.webglWindow || window.webglWindow.closed || !window.webglWindow.glSetUniform) {
+              return;
+          }
+          var name = UTF8ToString(name_ptr);
+          window.webglWindow.glSetUniform(pass_id, name, value);
+      }
+
+  function _js_webgl_start_animation() {
+          if (window.webglWindow && !window.webglWindow.closed && window.webglWindow.glStartAnimation) {
+              window.webglWindow.glStartAnimation();
+          }
+      }
+
+  function _js_webgl_stop_animation() {
+          if (window.webglWindow && !window.webglWindow.closed && window.webglWindow.glStopAnimation) {
+              window.webglWindow.glStopAnimation();
+          }
+      }
 
   function _js_websocket_close(portId) {
           if (!window.keykitWebSockets || !window.keykitWebSockets[portId]) {
@@ -5701,7 +5765,7 @@ async function createWasm() {
                   // Notify C code
                   if (typeof Module !== 'undefined' && Module.ccall) {
                       try {
-                          Module.ccall('mdep_on_websocket_event', null,
+                          Module.ccall('jscallback_on_websocket_event', null,
                                        ['number', 'string'],
                                        [portId, 'open']);
                       } catch (e) {
@@ -5719,7 +5783,7 @@ async function createWasm() {
                   // Notify C code
                   if (typeof Module !== 'undefined' && Module.ccall) {
                       try {
-                          Module.ccall('mdep_on_websocket_event', null,
+                          Module.ccall('jscallback_on_websocket_event', null,
                                        ['number', 'string'],
                                        [portId, 'data']);
                       } catch (e) {
@@ -5740,7 +5804,7 @@ async function createWasm() {
                   // Notify C code
                   if (typeof Module !== 'undefined' && Module.ccall) {
                       try {
-                          Module.ccall('mdep_on_websocket_event', null,
+                          Module.ccall('jscallback_on_websocket_event', null,
                                        ['number', 'string'],
                                        [portId, 'close']);
                       } catch (e) {
@@ -6713,7 +6777,7 @@ function checkIncomingModuleAPI() {
   ignoredModuleProp('fetchSettings');
 }
 var ASM_CONSTS = {
-  168776: () => { if (Module.keypath) { var len = lengthBytesUTF8(Module.keypath) + 1; var str = _malloc(len); stringToUTF8(Module.keypath, str, len); return str; } return 0; }
+  169384: () => { if (Module.keypath) { var len = lengthBytesUTF8(Module.keypath) + 1; var str = _malloc(len); stringToUTF8(Module.keypath, str, len); return str; } return 0; }
 };
 
 // Imports from the Wasm binary.
@@ -6722,13 +6786,13 @@ var _fflush = makeInvalidEarlyAccess('_fflush');
 var _main = Module['_main'] = makeInvalidEarlyAccess('_main');
 var _malloc = makeInvalidEarlyAccess('_malloc');
 var _free = makeInvalidEarlyAccess('_free');
-var _mdep_on_midi_message = Module['_mdep_on_midi_message'] = makeInvalidEarlyAccess('_mdep_on_midi_message');
-var _mdep_on_mouse_move = Module['_mdep_on_mouse_move'] = makeInvalidEarlyAccess('_mdep_on_mouse_move');
-var _mdep_on_mouse_button = Module['_mdep_on_mouse_button'] = makeInvalidEarlyAccess('_mdep_on_mouse_button');
-var _mdep_on_key_event = Module['_mdep_on_key_event'] = makeInvalidEarlyAccess('_mdep_on_key_event');
-var _mdep_on_window_resize = Module['_mdep_on_window_resize'] = makeInvalidEarlyAccess('_mdep_on_window_resize');
-var _mdep_on_nats_message = Module['_mdep_on_nats_message'] = makeInvalidEarlyAccess('_mdep_on_nats_message');
-var _mdep_on_websocket_event = Module['_mdep_on_websocket_event'] = makeInvalidEarlyAccess('_mdep_on_websocket_event');
+var _jscallback_on_midi_message = Module['_jscallback_on_midi_message'] = makeInvalidEarlyAccess('_jscallback_on_midi_message');
+var _jscallback_on_mouse_move = Module['_jscallback_on_mouse_move'] = makeInvalidEarlyAccess('_jscallback_on_mouse_move');
+var _jscallback_on_mouse_button = Module['_jscallback_on_mouse_button'] = makeInvalidEarlyAccess('_jscallback_on_mouse_button');
+var _jscallback_on_key_event = Module['_jscallback_on_key_event'] = makeInvalidEarlyAccess('_jscallback_on_key_event');
+var _jscallback_on_window_resize = Module['_jscallback_on_window_resize'] = makeInvalidEarlyAccess('_jscallback_on_window_resize');
+var _jscallback_on_nats_message = Module['_jscallback_on_nats_message'] = makeInvalidEarlyAccess('_jscallback_on_nats_message');
+var _jscallback_on_websocket_event = Module['_jscallback_on_websocket_event'] = makeInvalidEarlyAccess('_jscallback_on_websocket_event');
 var _emscripten_stack_get_end = makeInvalidEarlyAccess('_emscripten_stack_get_end');
 var _emscripten_stack_get_base = makeInvalidEarlyAccess('_emscripten_stack_get_base');
 var _setThrew = makeInvalidEarlyAccess('_setThrew');
@@ -6762,13 +6826,13 @@ function assignWasmExports(wasmExports) {
   assert(typeof wasmExports['__main_argc_argv'] != 'undefined', 'missing Wasm export: __main_argc_argv');
   assert(typeof wasmExports['malloc'] != 'undefined', 'missing Wasm export: malloc');
   assert(typeof wasmExports['free'] != 'undefined', 'missing Wasm export: free');
-  assert(typeof wasmExports['mdep_on_midi_message'] != 'undefined', 'missing Wasm export: mdep_on_midi_message');
-  assert(typeof wasmExports['mdep_on_mouse_move'] != 'undefined', 'missing Wasm export: mdep_on_mouse_move');
-  assert(typeof wasmExports['mdep_on_mouse_button'] != 'undefined', 'missing Wasm export: mdep_on_mouse_button');
-  assert(typeof wasmExports['mdep_on_key_event'] != 'undefined', 'missing Wasm export: mdep_on_key_event');
-  assert(typeof wasmExports['mdep_on_window_resize'] != 'undefined', 'missing Wasm export: mdep_on_window_resize');
-  assert(typeof wasmExports['mdep_on_nats_message'] != 'undefined', 'missing Wasm export: mdep_on_nats_message');
-  assert(typeof wasmExports['mdep_on_websocket_event'] != 'undefined', 'missing Wasm export: mdep_on_websocket_event');
+  assert(typeof wasmExports['jscallback_on_midi_message'] != 'undefined', 'missing Wasm export: jscallback_on_midi_message');
+  assert(typeof wasmExports['jscallback_on_mouse_move'] != 'undefined', 'missing Wasm export: jscallback_on_mouse_move');
+  assert(typeof wasmExports['jscallback_on_mouse_button'] != 'undefined', 'missing Wasm export: jscallback_on_mouse_button');
+  assert(typeof wasmExports['jscallback_on_key_event'] != 'undefined', 'missing Wasm export: jscallback_on_key_event');
+  assert(typeof wasmExports['jscallback_on_window_resize'] != 'undefined', 'missing Wasm export: jscallback_on_window_resize');
+  assert(typeof wasmExports['jscallback_on_nats_message'] != 'undefined', 'missing Wasm export: jscallback_on_nats_message');
+  assert(typeof wasmExports['jscallback_on_websocket_event'] != 'undefined', 'missing Wasm export: jscallback_on_websocket_event');
   assert(typeof wasmExports['emscripten_stack_get_end'] != 'undefined', 'missing Wasm export: emscripten_stack_get_end');
   assert(typeof wasmExports['emscripten_stack_get_base'] != 'undefined', 'missing Wasm export: emscripten_stack_get_base');
   assert(typeof wasmExports['setThrew'] != 'undefined', 'missing Wasm export: setThrew');
@@ -6798,13 +6862,13 @@ function assignWasmExports(wasmExports) {
   _main = Module['_main'] = createExportWrapper('__main_argc_argv', 2);
   _malloc = createExportWrapper('malloc', 1);
   _free = createExportWrapper('free', 1);
-  _mdep_on_midi_message = Module['_mdep_on_midi_message'] = createExportWrapper('mdep_on_midi_message', 4);
-  _mdep_on_mouse_move = Module['_mdep_on_mouse_move'] = createExportWrapper('mdep_on_mouse_move', 3);
-  _mdep_on_mouse_button = Module['_mdep_on_mouse_button'] = createExportWrapper('mdep_on_mouse_button', 5);
-  _mdep_on_key_event = Module['_mdep_on_key_event'] = createExportWrapper('mdep_on_key_event', 5);
-  _mdep_on_window_resize = Module['_mdep_on_window_resize'] = createExportWrapper('mdep_on_window_resize', 2);
-  _mdep_on_nats_message = Module['_mdep_on_nats_message'] = createExportWrapper('mdep_on_nats_message', 2);
-  _mdep_on_websocket_event = Module['_mdep_on_websocket_event'] = createExportWrapper('mdep_on_websocket_event', 2);
+  _jscallback_on_midi_message = Module['_jscallback_on_midi_message'] = createExportWrapper('jscallback_on_midi_message', 4);
+  _jscallback_on_mouse_move = Module['_jscallback_on_mouse_move'] = createExportWrapper('jscallback_on_mouse_move', 3);
+  _jscallback_on_mouse_button = Module['_jscallback_on_mouse_button'] = createExportWrapper('jscallback_on_mouse_button', 5);
+  _jscallback_on_key_event = Module['_jscallback_on_key_event'] = createExportWrapper('jscallback_on_key_event', 5);
+  _jscallback_on_window_resize = Module['_jscallback_on_window_resize'] = createExportWrapper('jscallback_on_window_resize', 2);
+  _jscallback_on_nats_message = Module['_jscallback_on_nats_message'] = createExportWrapper('jscallback_on_nats_message', 2);
+  _jscallback_on_websocket_event = Module['_jscallback_on_websocket_event'] = createExportWrapper('jscallback_on_websocket_event', 2);
   _emscripten_stack_get_end = wasmExports['emscripten_stack_get_end'];
   _emscripten_stack_get_base = wasmExports['emscripten_stack_get_base'];
   _setThrew = createExportWrapper('setThrew', 2);
@@ -6964,6 +7028,24 @@ var wasmImports = {
   js_setup_mouse_events: _js_setup_mouse_events,
   /** @export */
   js_sync_from_real: _js_sync_from_real,
+  /** @export */
+  js_webgl_clear: _js_webgl_clear,
+  /** @export */
+  js_webgl_create_pass: _js_webgl_create_pass,
+  /** @export */
+  js_webgl_draw_line: _js_webgl_draw_line,
+  /** @export */
+  js_webgl_run_pass: _js_webgl_run_pass,
+  /** @export */
+  js_webgl_set_color: _js_webgl_set_color,
+  /** @export */
+  js_webgl_set_pass_order: _js_webgl_set_pass_order,
+  /** @export */
+  js_webgl_set_uniform_float: _js_webgl_set_uniform_float,
+  /** @export */
+  js_webgl_start_animation: _js_webgl_start_animation,
+  /** @export */
+  js_webgl_stop_animation: _js_webgl_stop_animation,
   /** @export */
   js_websocket_close: _js_websocket_close,
   /** @export */

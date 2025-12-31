@@ -195,6 +195,10 @@
                 <button onclick="showHelp();" style="padding: 5px 15px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
                     Help
                 </button>
+                <span style="margin: 0 10px; color: #444;">|</span>
+                <button onclick="openWebGLWindow();" style="padding: 5px 15px; background: #4CAF50; color: white; border: none; border-radius: 4px; cursor: pointer;">
+                    WebGL Test
+                </button>
             </div>
         </div>
 
@@ -329,6 +333,480 @@
             helpWindow.document.close();
         }
 
+        // WebGL window reference (accessible from main page)
+        var webglWindow = null;
+
+        // Open a new window with a full-window WebGL canvas with drawing API
+        function openWebGLWindow() {
+            var webglContent = `
+<!DOCTYPE html>
+<html>
+<head>
+    <title>WebGL Test</title>
+    <style>
+        * { margin: 0; padding: 0; }
+        html, body { width: 100%; height: 100%; overflow: hidden; }
+        canvas { display: block; width: 100%; height: 100%; }
+    </style>
+</head>
+<body>
+    <canvas id="glcanvas"></canvas>
+    <script>
+        const canvas = document.getElementById('glcanvas');
+        const gl = canvas.getContext('webgl', { preserveDrawingBuffer: true }) || canvas.getContext('experimental-webgl', { preserveDrawingBuffer: true });
+
+        if (!gl) {
+            alert('WebGL not supported');
+        } else {
+            // Set default clear color to dark gray
+            gl.clearColor(0.1, 0.1, 0.1, 1.0);
+
+            // Current color state for primitive drawing
+            let currentColor = [1.0, 0.0, 0.0, 1.0]; // Red default
+
+            // ============================================
+            // Shader compilation utilities
+            // ============================================
+            function compileShader(type, source) {
+                const shader = gl.createShader(type);
+                gl.shaderSource(shader, source);
+                gl.compileShader(shader);
+                if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+                    console.error('Shader compile error:', gl.getShaderInfoLog(shader));
+                    gl.deleteShader(shader);
+                    return null;
+                }
+                return shader;
+            }
+
+            function createProgram(vsSource, fsSource) {
+                const vs = compileShader(gl.VERTEX_SHADER, vsSource);
+                const fs = compileShader(gl.FRAGMENT_SHADER, fsSource);
+                if (!vs || !fs) return null;
+
+                const prog = gl.createProgram();
+                gl.attachShader(prog, vs);
+                gl.attachShader(prog, fs);
+                gl.linkProgram(prog);
+
+                if (!gl.getProgramParameter(prog, gl.LINK_STATUS)) {
+                    console.error('Program link error:', gl.getProgramInfoLog(prog));
+                    return null;
+                }
+                return prog;
+            }
+
+            // ============================================
+            // Primitive drawing program (for lines, rects, etc.)
+            // ============================================
+            const primVsSource = \`
+                attribute vec2 aPosition;
+                uniform vec2 uResolution;
+                void main() {
+                    vec2 clipSpace = (aPosition / uResolution) * 2.0 - 1.0;
+                    gl_Position = vec4(clipSpace * vec2(1, -1), 0, 1);
+                }
+            \`;
+            const primFsSource = \`
+                precision mediump float;
+                uniform vec4 uColor;
+                void main() {
+                    gl_FragColor = uColor;
+                }
+            \`;
+
+            const primProgram = createProgram(primVsSource, primFsSource);
+            const primAPosition = gl.getAttribLocation(primProgram, 'aPosition');
+            const primUResolution = gl.getUniformLocation(primProgram, 'uResolution');
+            const primUColor = gl.getUniformLocation(primProgram, 'uColor');
+
+            const primBuffer = gl.createBuffer();
+
+            function usePrimProgram() {
+                gl.useProgram(primProgram);
+                gl.bindBuffer(gl.ARRAY_BUFFER, primBuffer);
+                gl.enableVertexAttribArray(primAPosition);
+                gl.vertexAttribPointer(primAPosition, 2, gl.FLOAT, false, 0, 0);
+                gl.uniform2f(primUResolution, canvas.width, canvas.height);
+            }
+
+            // ============================================
+            // Fullscreen quad for shader passes
+            // ============================================
+            const quadVsSource = \`
+                attribute vec2 aPosition;
+                varying vec2 vUv;
+                void main() {
+                    vUv = aPosition * 0.5 + 0.5;
+                    gl_Position = vec4(aPosition, 0, 1);
+                }
+            \`;
+
+            const quadBuffer = gl.createBuffer();
+            gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+            gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+                -1, -1,  1, -1,  -1, 1,
+                -1,  1,  1, -1,   1, 1
+            ]), gl.STATIC_DRAW);
+
+            // ============================================
+            // Framebuffer / Texture management
+            // ============================================
+            let fboWidth = 0, fboHeight = 0;
+            let textures = [null, null];  // Ping-pong textures
+            let fbos = [null, null];      // Ping-pong FBOs
+            let currentTexIndex = 0;      // Which texture was last written to
+
+            function createFboTexture(width, height) {
+                const tex = gl.createTexture();
+                gl.bindTexture(gl.TEXTURE_2D, tex);
+                gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+                gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+                return tex;
+            }
+
+            function createFbo(texture) {
+                const fbo = gl.createFramebuffer();
+                gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
+                gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+                return fbo;
+            }
+
+            function ensureFboSize(width, height) {
+                if (fboWidth === width && fboHeight === height) return;
+                fboWidth = width;
+                fboHeight = height;
+
+                // Clean up old resources
+                for (let i = 0; i < 2; i++) {
+                    if (textures[i]) gl.deleteTexture(textures[i]);
+                    if (fbos[i]) gl.deleteFramebuffer(fbos[i]);
+                }
+
+                // Create new ping-pong buffers
+                for (let i = 0; i < 2; i++) {
+                    textures[i] = createFboTexture(width, height);
+                    fbos[i] = createFbo(textures[i]);
+                }
+                currentTexIndex = 0;
+                console.log('Created FBOs:', width, 'x', height);
+            }
+
+            // ============================================
+            // Shader Pass Management
+            // ============================================
+            const passes = [];  // Array of pass objects
+            let animationRunning = false;
+            let animationStartTime = 0;
+            let animationFrameId = null;
+            let mouseX = 0, mouseY = 0;
+
+            // Track mouse position
+            canvas.addEventListener('mousemove', function(e) {
+                const rect = canvas.getBoundingClientRect();
+                mouseX = e.clientX - rect.left;
+                mouseY = canvas.height - (e.clientY - rect.top); // Flip Y for GL coords
+            });
+
+            // Create a shader pass
+            // fragmentSource should use these uniforms:
+            //   uniform vec2 iResolution;
+            //   uniform float iTime;
+            //   uniform vec4 iMouse;
+            //   uniform sampler2D iChannel0; (previous pass output)
+            window.glCreatePass = function(fragmentSource) {
+                const fsSource = \`
+                    precision mediump float;
+                    uniform vec2 iResolution;
+                    uniform float iTime;
+                    uniform vec4 iMouse;
+                    uniform sampler2D iChannel0;
+                    varying vec2 vUv;
+                \` + fragmentSource;
+
+                const prog = createProgram(quadVsSource, fsSource);
+                if (!prog) {
+                    console.error('Failed to create pass');
+                    return -1;
+                }
+
+                const pass = {
+                    program: prog,
+                    aPosition: gl.getAttribLocation(prog, 'aPosition'),
+                    uResolution: gl.getUniformLocation(prog, 'iResolution'),
+                    uTime: gl.getUniformLocation(prog, 'iTime'),
+                    uMouse: gl.getUniformLocation(prog, 'iMouse'),
+                    uChannel0: gl.getUniformLocation(prog, 'iChannel0'),
+                    uniforms: {}  // Custom uniforms
+                };
+
+                const passId = passes.length;
+                passes.push(pass);
+                console.log('Created pass', passId);
+                return passId;
+            };
+
+            // Set a custom uniform on a pass
+            window.glSetUniform = function(passId, name, value) {
+                if (passId < 0 || passId >= passes.length) return;
+                const pass = passes[passId];
+
+                // Get or cache uniform location
+                if (!(name in pass.uniforms)) {
+                    pass.uniforms[name] = {
+                        location: gl.getUniformLocation(pass.program, name),
+                        value: null
+                    };
+                }
+                pass.uniforms[name].value = value;
+            };
+
+            // Run a single pass
+            // toScreen: if true, render to screen; if false, render to FBO
+            window.glRunPass = function(passId, toScreen) {
+                if (passId < 0 || passId >= passes.length) return;
+                const pass = passes[passId];
+
+                ensureFboSize(canvas.width, canvas.height);
+
+                // Determine input texture (previous pass output)
+                const inputTex = textures[currentTexIndex];
+
+                // Determine output target
+                if (toScreen) {
+                    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+                } else {
+                    // Render to the other texture
+                    const outputIndex = 1 - currentTexIndex;
+                    gl.bindFramebuffer(gl.FRAMEBUFFER, fbos[outputIndex]);
+                    currentTexIndex = outputIndex;
+                }
+
+                gl.viewport(0, 0, canvas.width, canvas.height);
+                gl.useProgram(pass.program);
+
+                // Bind quad
+                gl.bindBuffer(gl.ARRAY_BUFFER, quadBuffer);
+                gl.enableVertexAttribArray(pass.aPosition);
+                gl.vertexAttribPointer(pass.aPosition, 2, gl.FLOAT, false, 0, 0);
+
+                // Set standard uniforms
+                gl.uniform2f(pass.uResolution, canvas.width, canvas.height);
+                const time = animationRunning ? (performance.now() - animationStartTime) / 1000.0 : 0;
+                gl.uniform1f(pass.uTime, time);
+                gl.uniform4f(pass.uMouse, mouseX, mouseY, 0, 0);
+
+                // Bind input texture
+                gl.activeTexture(gl.TEXTURE0);
+                gl.bindTexture(gl.TEXTURE_2D, inputTex);
+                gl.uniform1i(pass.uChannel0, 0);
+
+                // Set custom uniforms
+                for (const name in pass.uniforms) {
+                    const u = pass.uniforms[name];
+                    if (u.location && u.value !== null) {
+                        if (typeof u.value === 'number') {
+                            gl.uniform1f(u.location, u.value);
+                        } else if (Array.isArray(u.value)) {
+                            if (u.value.length === 2) gl.uniform2fv(u.location, u.value);
+                            else if (u.value.length === 3) gl.uniform3fv(u.location, u.value);
+                            else if (u.value.length === 4) gl.uniform4fv(u.location, u.value);
+                        }
+                    }
+                }
+
+                // Draw fullscreen quad
+                gl.drawArrays(gl.TRIANGLES, 0, 6);
+
+                // Unbind FBO
+                gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+            };
+
+            // Animation loop
+            let passOrder = [];  // Which passes to run, in order
+
+            window.glSetPassOrder = function(orderArray) {
+                passOrder = orderArray.slice();
+                console.log('Pass order set:', passOrder);
+            };
+
+            function animationLoop() {
+                if (!animationRunning) return;
+
+                // Run all passes in order
+                for (let i = 0; i < passOrder.length; i++) {
+                    const passId = passOrder[i];
+                    const isLast = (i === passOrder.length - 1);
+                    window.glRunPass(passId, isLast);  // Last pass goes to screen
+                }
+
+                animationFrameId = requestAnimationFrame(animationLoop);
+            }
+
+            window.glStartAnimation = function() {
+                if (animationRunning) return;
+                animationRunning = true;
+                animationStartTime = performance.now();
+                animationLoop();
+                console.log('Animation started');
+            };
+
+            window.glStopAnimation = function() {
+                animationRunning = false;
+                if (animationFrameId) {
+                    cancelAnimationFrame(animationFrameId);
+                    animationFrameId = null;
+                }
+                console.log('Animation stopped');
+            };
+
+            // ============================================
+            // Resize handling
+            // ============================================
+            function resize() {
+                const newWidth = window.innerWidth;
+                const newHeight = window.innerHeight;
+                if (canvas.width !== newWidth || canvas.height !== newHeight) {
+                    canvas.width = newWidth;
+                    canvas.height = newHeight;
+                }
+                gl.viewport(0, 0, canvas.width, canvas.height);
+            }
+
+            // ============================================
+            // Primitive Drawing API
+            // ============================================
+            window.glClear = function(r, g, b) {
+                r = r !== undefined ? r : 0.1;
+                g = g !== undefined ? g : 0.1;
+                b = b !== undefined ? b : 0.1;
+                gl.clearColor(r, g, b, 1.0);
+                gl.clear(gl.COLOR_BUFFER_BIT);
+            };
+
+            window.glSetColor = function(r, g, b, a) {
+                currentColor = [r, g, b, a !== undefined ? a : 1.0];
+            };
+
+            window.glSetColorRGB = function(r, g, b, a) {
+                currentColor = [r/255, g/255, b/255, a !== undefined ? a/255 : 1.0];
+            };
+
+            window.glFillRect = function(x, y, width, height) {
+                usePrimProgram();
+                const vertices = new Float32Array([
+                    x, y, x + width, y, x, y + height, x + width, y + height
+                ]);
+                gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW);
+                gl.uniform4fv(primUColor, currentColor);
+                gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+            };
+
+            window.glLine = function(x1, y1, x2, y2) {
+                usePrimProgram();
+                const vertices = new Float32Array([x1, y1, x2, y2]);
+                gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW);
+                gl.uniform4fv(primUColor, currentColor);
+                gl.drawArrays(gl.LINES, 0, 2);
+            };
+
+            window.glLines = function(points) {
+                if (points.length < 4) return;
+                usePrimProgram();
+                const vertices = new Float32Array(points);
+                gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW);
+                gl.uniform4fv(primUColor, currentColor);
+                gl.drawArrays(gl.LINE_STRIP, 0, points.length / 2);
+            };
+
+            window.glFillTriangle = function(x1, y1, x2, y2, x3, y3) {
+                usePrimProgram();
+                const vertices = new Float32Array([x1, y1, x2, y2, x3, y3]);
+                gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW);
+                gl.uniform4fv(primUColor, currentColor);
+                gl.drawArrays(gl.TRIANGLES, 0, 3);
+            };
+
+            window.glFillCircle = function(cx, cy, radius, segments) {
+                usePrimProgram();
+                segments = segments || 32;
+                const vertices = [cx, cy];
+                for (let i = 0; i <= segments; i++) {
+                    const angle = (i / segments) * Math.PI * 2;
+                    vertices.push(cx + Math.cos(angle) * radius);
+                    vertices.push(cy + Math.sin(angle) * radius);
+                }
+                gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.DYNAMIC_DRAW);
+                gl.uniform4fv(primUColor, currentColor);
+                gl.drawArrays(gl.TRIANGLE_FAN, 0, segments + 2);
+            };
+
+            window.glGetWidth = function() { return canvas.width; };
+            window.glGetHeight = function() { return canvas.height; };
+
+            window.glFullscreen = function() {
+                if (document.fullscreenElement) {
+                    document.exitFullscreen();
+                } else {
+                    canvas.requestFullscreen();
+                }
+            };
+
+            // ============================================
+            // Initialization
+            // ============================================
+            window.glReady = true;
+
+            window.addEventListener('resize', resize);
+            resize();
+            gl.clear(gl.COLOR_BUFFER_BIT);
+
+            window.addEventListener('keydown', function(e) {
+                if (e.key === 'f' || e.key === 'F') {
+                    window.glFullscreen();
+                }
+            });
+
+            // Draw initial red square as demo
+            window.glClear();
+            window.glSetColor(1, 0, 0, 1);
+            const cx = canvas.width / 2;
+            const cy = canvas.height / 2;
+            window.glFillRect(cx - 50, cy - 50, 100, 100);
+
+            console.log('WebGL window ready. Press F for fullscreen.');
+            console.log('Primitive API: glClear, glSetColor, glSetColorRGB, glFillRect, glLine, glLines, glFillTriangle, glFillCircle, glFullscreen, glGetWidth, glGetHeight');
+            console.log('Shader API: glCreatePass(fragmentSrc), glSetUniform(passId, name, value), glRunPass(passId, toScreen), glSetPassOrder([ids]), glStartAnimation(), glStopAnimation()');
+
+            canvas.addEventListener('contextmenu', function(e) {
+                e.preventDefault();
+            });
+        }
+    <\/script>
+</body>
+</html>
+`;
+            // Close existing window if open
+            if (webglWindow && !webglWindow.closed) {
+                webglWindow.close();
+            }
+            webglWindow = window.open('', 'WebGLTest', 'width=800,height=600,resizable=yes');
+            webglWindow.document.write(webglContent);
+            webglWindow.document.close();
+
+            // Store reference globally for access from console/WASM
+            window.webglWindow = webglWindow;
+        }
+
+        // Helper function to check if WebGL window is ready
+        function isWebGLReady() {
+            return webglWindow && !webglWindow.closed && webglWindow.glReady;
+        }
+
         // Flag to track if WASM runtime is fully initialized
         var wasmRuntimeReady = false;
 
@@ -447,7 +925,7 @@
                             path: '/keykit/libcore',
                             manifest: 'libcore/libcore_manifest.json',
                             enabled: true,
-                            batchSize: 5,
+                            batchSize: 100,
                             description: 'Core library functions'
                         },
                         {
@@ -455,7 +933,7 @@
                             path: '/keykit/libtools',
                             manifest: 'libtools/libtools_manifest.json',
                             enabled: true,
-                            batchSize: 10,
+                            batchSize: 100,
                             description: 'User tools and utilities'
                         },
                         {
@@ -463,7 +941,7 @@
                             path: '/keykit/libextra',
                             manifest: 'libextra/libextra_manifest.json',
                             enabled: true,
-                            batchSize: 10,
+                            batchSize: 100,
                             description: 'Extra/experimental libraries'
                         }
                     ];
@@ -1273,9 +1751,9 @@
             console.log('[CANVAS] Canvas resized to ' + width + 'x' + height);
 
             // Notify C code of canvas size change
-            if (wasmRuntimeReady && typeof Module !== 'undefined' && Module._mdep_on_window_resize) {
+            if (wasmRuntimeReady && typeof Module !== 'undefined' && Module._jscallback_on_window_resize) {
                 try {
-                    Module._mdep_on_window_resize(width, height);
+                    Module._jscallback_on_window_resize(width, height);
                     console.log('[CANVAS] Notified C code of resize');
                 } catch (e) {
                     console.error('[CANVAS] Error calling C callback:', e);
@@ -1300,10 +1778,10 @@
                 console.log('[CANVAS] Canvas initialized to ' + canvas.width + 'x' + canvas.height);
 
                 // Notify C code of canvas size (only if runtime is fully initialized)
-                if (wasmRuntimeReady && typeof Module !== 'undefined' && Module._mdep_on_window_resize) {
+                if (wasmRuntimeReady && typeof Module !== 'undefined' && Module._jscallback_on_window_resize) {
                     try {
-                        console.log('[CANVAS] Calling Module._mdep_on_window_resize(' + currentCanvasWidth + ', ' + currentCanvasHeight + ')');
-                        Module._mdep_on_window_resize(currentCanvasWidth, currentCanvasHeight);
+                        console.log('[CANVAS] Calling Module._jscallback_on_window_resize(' + currentCanvasWidth + ', ' + currentCanvasHeight + ')');
+                        Module._jscallback_on_window_resize(currentCanvasWidth, currentCanvasHeight);
                         console.log('[CANVAS] Successfully notified C code');
                     } catch (e) {
                         console.error('[CANVAS] Error calling C callback:', e);
@@ -1334,6 +1812,6 @@
         });
     </script>
 
-    <script async type="text/javascript" src="keykit.js"></script>
+    <script async src="keykit.js"></script>
 </body>
 </html>
