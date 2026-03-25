@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Budget Orchestra - Resource-Aware Music Optimizer</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a12;color:#e0e0e8;font-family:'Segoe UI',system-ui,sans-serif;overflow-x:hidden;min-height:100vh}
+:root{--gold:#ffd700;--silver:#c0c0c0;--bronze:#cd7f32;--green:#00e676;--yellow:#ffeb3b;--red:#ff5252;--panel-bg:#12121e;--cell-bg:#1a1a2e;--cell-hover:#252540;--border:#2a2a3e;--accent:#7c4dff}
+
+/* TOP BAR */
+#top-bar{padding:12px 20px;background:linear-gradient(180deg,#14142a,#0e0e1a);border-bottom:1px solid var(--border);display:flex;align-items:center;gap:16px}
+#top-bar h1{font-size:18px;font-weight:700;letter-spacing:1px;white-space:nowrap}
+#top-bar h1 span{color:var(--accent)}
+#budget-container{flex:1;position:relative;height:32px;background:#0a0a14;border-radius:6px;border:1px solid var(--border);overflow:hidden}
+#budget-bar{height:100%;transition:width .3s,background .3s;border-radius:5px}
+#budget-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-weight:700;font-size:14px;text-shadow:0 1px 3px rgba(0,0,0,.8)}
+#budget-warning{display:none;padding:4px 12px;background:var(--red);border-radius:4px;font-size:12px;font-weight:700;animation:pulse 1s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+
+/* MAIN LAYOUT */
+#main{display:grid;grid-template-columns:220px 1fr 260px;height:calc(100vh - 56px - 80px);overflow:hidden}
+
+/* LEFT PANEL */
+#left-panel{background:var(--panel-bg);border-right:1px solid var(--border);padding:12px;overflow-y:auto}
+#left-panel h2{font-size:13px;text-transform:uppercase;letter-spacing:1.5px;color:#888;margin-bottom:10px}
+.inst-group{margin-bottom:14px;padding:10px;background:#16162a;border-radius:8px;border:1px solid var(--border)}
+.inst-group .inst-name{font-size:13px;font-weight:600;margin-bottom:8px;display:flex;align-items:center;gap:6px}
+.inst-group .inst-name span{width:8px;height:8px;border-radius:50%;display:inline-block}
+.tier-btns{display:flex;gap:4px}
+.tier-btn{flex:1;padding:5px 2px;border:2px solid;border-radius:5px;background:transparent;color:#e0e0e8;font-size:10px;cursor:pointer;text-align:center;transition:all .15s}
+.tier-btn:hover{filter:brightness(1.3)}
+.tier-btn.active{filter:brightness(1.4)}
+.tier-btn.premium{border-color:var(--gold);color:var(--gold)}
+.tier-btn.premium.active{background:rgba(255,215,0,.15)}
+.tier-btn.standard{border-color:var(--silver);color:var(--silver)}
+.tier-btn.standard.active{background:rgba(192,192,192,.15)}
+.tier-btn.economy{border-color:var(--bronze);color:var(--bronze)}
+.tier-btn.economy.active{background:rgba(205,127,50,.15)}
+.vol-row{margin-top:8px;display:flex;align-items:center;gap:6px}
+.vol-row label{font-size:10px;color:#888;width:28px}
+.vol-row input[type=range]{flex:1;height:4px;-webkit-appearance:none;background:#2a2a3e;border-radius:2px;outline:none}
+.vol-row input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:12px;height:12px;background:var(--accent);border-radius:50%;cursor:pointer}
+
+/* CENTER */
+#center{padding:12px;overflow:auto;display:flex;flex-direction:column;gap:10px}
+#sequencer-header{display:grid;grid-template-columns:70px repeat(16,1fr);gap:2px;padding-bottom:4px}
+#sequencer-header .beat-num{text-align:center;font-size:10px;color:#666;font-weight:600}
+#sequencer-header .beat-num.strong{color:var(--accent)}
+#sequencer{display:flex;flex-direction:column;gap:2px;flex:1;min-height:0}
+.seq-row{display:grid;grid-template-columns:70px repeat(16,1fr);gap:2px;align-items:stretch}
+.seq-label{display:flex;align-items:center;font-size:12px;font-weight:600;padding-left:4px;white-space:nowrap}
+.seq-cell{aspect-ratio:1;background:var(--cell-bg);border:1px solid var(--border);border-radius:4px;cursor:pointer;transition:all .12s;position:relative;display:flex;align-items:center;justify-content:center;font-size:8px;font-weight:700;min-height:28px}
+.seq-cell:hover{background:var(--cell-hover);border-color:#444}
+.seq-cell.active-beat{box-shadow:inset 0 0 12px rgba(124,77,255,.4)}
+.seq-cell.on{opacity:1}
+.seq-cell.on.premium{background:rgba(255,215,0,.25);border-color:var(--gold);color:var(--gold)}
+.seq-cell.on.standard{background:rgba(192,192,192,.2);border-color:var(--silver);color:var(--silver)}
+.seq-cell.on.economy{background:rgba(205,127,50,.2);border-color:var(--bronze);color:var(--bronze)}
+.seq-cell .cost-tag{font-size:7px;position:absolute;bottom:1px;right:2px;opacity:.7}
+
+/* RIGHT PANEL */
+#right-panel{background:var(--panel-bg);border-left:1px solid var(--border);padding:12px;overflow-y:auto}
+#right-panel h2{font-size:13px;text-transform:uppercase;letter-spacing:1.5px;color:#888;margin-bottom:10px}
+.stat-card{background:#16162a;border:1px solid var(--border);border-radius:8px;padding:10px;margin-bottom:10px}
+.stat-card .stat-label{font-size:10px;color:#888;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+.stat-card .stat-value{font-size:22px;font-weight:700}
+.stat-card .stat-sub{font-size:10px;color:#666;margin-top:2px}
+.meter-bar{height:8px;background:#0a0a14;border-radius:4px;overflow:hidden;margin-top:6px}
+.meter-fill{height:100%;border-radius:4px;transition:width .3s}
+#cost-chart{width:100%;height:80px;background:#0a0a14;border-radius:6px;border:1px solid var(--border)}
+#sparkline{width:100%;height:50px;background:#0a0a14;border-radius:6px;border:1px solid var(--border)}
+.efficiency-good{color:var(--green)}.efficiency-mid{color:var(--yellow)}.efficiency-low{color:var(--red)}
+
+/* BOTTOM BAR */
+#bottom-bar{height:80px;background:linear-gradient(0deg,#14142a,#0e0e1a);border-top:1px solid var(--border);display:flex;align-items:center;padding:0 20px;gap:12px}
+.ctrl-btn{padding:8px 18px;border:1px solid var(--border);border-radius:6px;background:#1a1a2e;color:#e0e0e8;font-size:13px;cursor:pointer;transition:all .15s;font-weight:600}
+.ctrl-btn:hover{background:#252540;border-color:#555}
+.ctrl-btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.ctrl-btn.primary:hover{filter:brightness(1.2)}
+.ctrl-btn.danger{border-color:var(--red);color:var(--red)}
+.ctrl-btn.warning{border-color:var(--yellow);color:var(--yellow)}
+.ctrl-btn.active-toggle{background:rgba(124,77,255,.2);border-color:var(--accent);color:var(--accent)}
+.ctrl-group{display:flex;align-items:center;gap:8px}
+.ctrl-group label{font-size:11px;color:#888}
+.ctrl-group input[type=range]{width:100px}
+.ctrl-group select{background:#1a1a2e;border:1px solid var(--border);color:#e0e0e8;padding:5px 8px;border-radius:4px;font-size:12px}
+#projection{font-size:11px;color:#888;margin-left:auto;text-align:right;line-height:1.5}
+#projection span{color:var(--accent);font-weight:700}
+</style>
+</head>
+<body>
+<!-- TOP BAR -->
+<div id="top-bar">
+  <h1><span>&#9835;</span> Budget Orchestra</h1>
+  <div id="budget-container">
+    <div id="budget-bar"></div>
+    <div id="budget-text">1000 / 1000 credits</div>
+  </div>
+  <div id="budget-warning">LOW BUDGET</div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+  <!-- LEFT PANEL -->
+  <div id="left-panel">
+    <h2>Model Tiers</h2>
+    <div id="inst-controls"></div>
+  </div>
+
+  <!-- CENTER -->
+  <div id="center">
+    <div id="sequencer-header"></div>
+    <div id="sequencer"></div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div id="right-panel">
+    <h2>Resource Analytics</h2>
+    <div class="stat-card">
+      <div class="stat-label">Cost Per Bar</div>
+      <div class="stat-value" id="cost-per-bar">0</div>
+      <canvas id="cost-chart"></canvas>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Quality Score</div>
+      <div class="stat-value" id="quality-score">0%</div>
+      <div class="meter-bar"><div class="meter-fill" id="quality-fill" style="width:0%;background:var(--green)"></div></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Efficiency Ratio</div>
+      <div class="stat-value" id="efficiency-ratio">-</div>
+      <div class="stat-sub">quality / cost</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Burn Rate</div>
+      <div class="stat-value" id="burn-rate">0 <small style="font-size:11px">cr/sec</small></div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Budget History</div>
+      <canvas id="sparkline"></canvas>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Active Notes</div>
+      <div class="stat-value" id="active-notes">0</div>
+      <div class="stat-sub" id="tier-breakdown">P:0 S:0 E:0</div>
+    </div>
+  </div>
+</div>
+
+<!-- BOTTOM BAR -->
+<div id="bottom-bar">
+  <button class="ctrl-btn primary" id="btn-play">&#9654; Play</button>
+  <button class="ctrl-btn" id="btn-stop">&#9632; Stop</button>
+  <div class="ctrl-group">
+    <label>BPM</label>
+    <input type="range" id="bpm-slider" min="80" max="160" value="120">
+    <span id="bpm-val" style="font-size:12px;width:30px">120</span>
+  </div>
+  <button class="ctrl-btn warning" id="btn-optimize">Auto-Optimize</button>
+  <button class="ctrl-btn" id="btn-fallback">Fallback: OFF</button>
+  <button class="ctrl-btn danger" id="btn-refill">Refill Budget</button>
+  <div class="ctrl-group">
+    <label>Preset</label>
+    <select id="preset-select">
+      <option value="">-- None --</option>
+      <option value="rock">Rock</option>
+      <option value="techno">Techno</option>
+      <option value="ambient">Ambient</option>
+      <option value="jazz">Jazz</option>
+    </select>
+  </div>
+  <div id="projection">Loops left: <span id="loops-left">&#8734;</span><br>Cost/loop: <span id="cost-loop">0</span></div>
+</div>
+
+<script>
+// ========== CORE STATE ==========
+const INSTRUMENTS = [
+  {name:'Kick',  color:'#e53935'},
+  {name:'Snare', color:'#fb8c00'},
+  {name:'Hi-hat',color:'#fdd835'},
+  {name:'Bass',  color:'#43a047'},
+  {name:'Lead',  color:'#1e88e5'},
+  {name:'Pad',   color:'#8e24aa'}
+];
+const TIERS = {premium:{label:'Premium',cost:15,cls:'premium'},standard:{label:'Standard',cost:5,cls:'standard'},economy:{label:'Economy',cost:1,cls:'economy'}};
+const TIER_ORDER = ['premium','standard','economy'];
+const STEPS = 16;
+const STRONG_BEATS = [0,4,8,12];
+const MAX_BUDGET = 1000;
+
+let budget = MAX_BUDGET;
+let grid = []; // [inst][step] = null | 'premium' | 'standard' | 'economy'
+let defaultTier = []; // per instrument default tier
+let volumes = [];
+let bpm = 120;
+let playing = false;
+let currentStep = -1;
+let fallbackMode = false;
+let loopId = null;
+let audioCtx = null;
+let budgetHistory = [MAX_BUDGET];
+let costHistory = [];
+let barCostAccum = 0;
+
+// Init grid
+for(let i=0;i<6;i++){
+  grid[i]=new Array(STEPS).fill(null);
+  defaultTier[i]='standard';
+  volumes[i]=0.7;
+}
+
+// ========== AUDIO CONTEXT ==========
+function ensureAudio(){
+  if(!audioCtx) audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  if(audioCtx.state==='suspended') audioCtx.resume();
+}
+
+// ========== SOUND SYNTHESIS ==========
+function playNote(instIdx, tier, time){
+  ensureAudio();
+  const vol = volumes[instIdx];
+  const t = time || audioCtx.currentTime;
+  switch(instIdx){
+    case 0: synthKick(tier,t,vol); break;
+    case 1: synthSnare(tier,t,vol); break;
+    case 2: synthHihat(tier,t,vol); break;
+    case 3: synthBass(tier,t,vol); break;
+    case 4: synthLead(tier,t,vol); break;
+    case 5: synthPad(tier,t,vol); break;
+  }
+}
+
+function synthKick(tier,t,vol){
+  const g=audioCtx.createGain();g.connect(audioCtx.destination);g.gain.setValueAtTime(vol,t);
+  if(tier==='premium'){
+    // Sub layer
+    const o1=audioCtx.createOscillator();o1.type='sine';o1.frequency.setValueAtTime(150,t);o1.frequency.exponentialRampToValueAtTime(30,t+0.25);
+    const g1=audioCtx.createGain();g1.gain.setValueAtTime(1,t);g1.gain.exponentialRampToValueAtTime(0.001,t+0.4);
+    o1.connect(g1);g1.connect(g);o1.start(t);o1.stop(t+0.4);
+    // Click layer
+    const o2=audioCtx.createOscillator();o2.type='triangle';o2.frequency.setValueAtTime(800,t);o2.frequency.exponentialRampToValueAtTime(60,t+0.06);
+    const g2=audioCtx.createGain();g2.gain.setValueAtTime(0.8,t);g2.gain.exponentialRampToValueAtTime(0.001,t+0.08);
+    o2.connect(g2);g2.connect(g);o2.start(t);o2.stop(t+0.1);
+    // Noise transient
+    const buf=audioCtx.createBuffer(1,audioCtx.sampleRate*0.05,audioCtx.sampleRate);
+    const d=buf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,3);
+    const n=audioCtx.createBufferSource();n.buffer=buf;const gn=audioCtx.createGain();gn.gain.setValueAtTime(0.5,t);gn.gain.exponentialRampToValueAtTime(0.001,t+0.05);
+    n.connect(gn);gn.connect(g);n.start(t);
+    // Distortion
+    const ws=audioCtx.createWaveShaper();ws.curve=makeDistCurve(200);g.disconnect();g.connect(ws);ws.connect(audioCtx.destination);
+  } else if(tier==='standard'){
+    const o=audioCtx.createOscillator();o.type='sine';o.frequency.setValueAtTime(120,t);o.frequency.exponentialRampToValueAtTime(30,t+0.15);
+    const eg=audioCtx.createGain();eg.gain.setValueAtTime(1,t);eg.gain.exponentialRampToValueAtTime(0.001,t+0.25);
+    o.connect(eg);eg.connect(g);o.start(t);o.stop(t+0.3);
+    // Small noise
+    const buf=audioCtx.createBuffer(1,audioCtx.sampleRate*0.03,audioCtx.sampleRate);
+    const d=buf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*0.3;
+    const n=audioCtx.createBufferSource();n.buffer=buf;const gn=audioCtx.createGain();gn.gain.setValueAtTime(0.3,t);gn.gain.exponentialRampToValueAtTime(0.001,t+0.03);
+    n.connect(gn);gn.connect(g);n.start(t);
+  } else {
+    const o=audioCtx.createOscillator();o.type='sine';o.frequency.setValueAtTime(80,t);o.frequency.exponentialRampToValueAtTime(40,t+0.1);
+    const eg=audioCtx.createGain();eg.gain.setValueAtTime(vol*0.6,t);eg.gain.exponentialRampToValueAtTime(0.001,t+0.12);
+    o.connect(eg);eg.connect(audioCtx.destination);o.start(t);o.stop(t+0.15);
+  }
+}
+
+function synthSnare(tier,t,vol){
+  const g=audioCtx.createGain();g.connect(audioCtx.destination);g.gain.setValueAtTime(vol*0.8,t);
+  if(tier==='premium'){
+    // Tone
+    const o=audioCtx.createOscillator();o.type='triangle';o.frequency.setValueAtTime(250,t);o.frequency.exponentialRampToValueAtTime(120,t+0.05);
+    const og=audioCtx.createGain();og.gain.setValueAtTime(0.7,t);og.gain.exponentialRampToValueAtTime(0.001,t+0.1);
+    o.connect(og);og.connect(g);o.start(t);o.stop(t+0.12);
+    // Noise body
+    const buf=audioCtx.createBuffer(1,audioCtx.sampleRate*0.2,audioCtx.sampleRate);
+    const d=buf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
+    const n=audioCtx.createBufferSource();n.buffer=buf;
+    const hp=audioCtx.createBiquadFilter();hp.type='highpass';hp.frequency.value=2000;
+    const bp=audioCtx.createBiquadFilter();bp.type='bandpass';bp.frequency.value=4000;bp.Q.value=0.8;
+    const ng=audioCtx.createGain();ng.gain.setValueAtTime(0.9,t);ng.gain.exponentialRampToValueAtTime(0.001,t+0.2);
+    n.connect(hp);hp.connect(bp);bp.connect(ng);ng.connect(g);n.start(t);
+    // Reverb-like tail via delayed noise
+    const buf2=audioCtx.createBuffer(1,audioCtx.sampleRate*0.15,audioCtx.sampleRate);
+    const d2=buf2.getChannelData(0);for(let i=0;i<d2.length;i++)d2[i]=(Math.random()*2-1)*Math.pow(1-i/d2.length,2);
+    const n2=audioCtx.createBufferSource();n2.buffer=buf2;const ng2=audioCtx.createGain();ng2.gain.setValueAtTime(0.3,t+0.02);ng2.gain.exponentialRampToValueAtTime(0.001,t+0.18);
+    n2.connect(ng2);ng2.connect(g);n2.start(t+0.02);
+  } else if(tier==='standard'){
+    const o=audioCtx.createOscillator();o.type='triangle';o.frequency.setValueAtTime(200,t);
+    const og=audioCtx.createGain();og.gain.setValueAtTime(0.5,t);og.gain.exponentialRampToValueAtTime(0.001,t+0.06);
+    o.connect(og);og.connect(g);o.start(t);o.stop(t+0.08);
+    const buf=audioCtx.createBuffer(1,audioCtx.sampleRate*0.12,audioCtx.sampleRate);
+    const d=buf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
+    const n=audioCtx.createBufferSource();n.buffer=buf;
+    const hp=audioCtx.createBiquadFilter();hp.type='highpass';hp.frequency.value=3000;
+    const ng=audioCtx.createGain();ng.gain.setValueAtTime(0.6,t);ng.gain.exponentialRampToValueAtTime(0.001,t+0.12);
+    n.connect(hp);hp.connect(ng);ng.connect(g);n.start(t);
+  } else {
+    const buf=audioCtx.createBuffer(1,audioCtx.sampleRate*0.06,audioCtx.sampleRate);
+    const d=buf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/d.length,2);
+    const n=audioCtx.createBufferSource();n.buffer=buf;
+    const ng=audioCtx.createGain();ng.gain.setValueAtTime(vol*0.4,t);ng.gain.exponentialRampToValueAtTime(0.001,t+0.06);
+    n.connect(ng);ng.connect(audioCtx.destination);n.start(t);
+  }
+}
+
+function synthHihat(tier,t,vol){
+  const g=audioCtx.createGain();g.connect(audioCtx.destination);g.gain.setValueAtTime(vol*0.5,t);
+  if(tier==='premium'){
+    // Multi-frequency metallic
+    [2200,3400,5800,7600].forEach(f=>{
+      const o=audioCtx.createOscillator();o.type='square';o.frequency.value=f;
+      const og=audioCtx.createGain();og.gain.setValueAtTime(0.12,t);og.gain.exponentialRampToValueAtTime(0.001,t+0.12);
+      o.connect(og);og.connect(g);o.start(t);o.stop(t+0.14);
+    });
+    const buf=audioCtx.createBuffer(1,audioCtx.sampleRate*0.08,audioCtx.sampleRate);
+    const d=buf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1);
+    const n=audioCtx.createBufferSource();n.buffer=buf;
+    const hp=audioCtx.createBiquadFilter();hp.type='highpass';hp.frequency.value=8000;
+    const ng=audioCtx.createGain();ng.gain.setValueAtTime(0.6,t);ng.gain.exponentialRampToValueAtTime(0.001,t+0.08);
+    n.connect(hp);hp.connect(ng);ng.connect(g);n.start(t);
+  } else if(tier==='standard'){
+    const buf=audioCtx.createBuffer(1,audioCtx.sampleRate*0.06,audioCtx.sampleRate);
+    const d=buf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;
+    const n=audioCtx.createBufferSource();n.buffer=buf;
+    const hp=audioCtx.createBiquadFilter();hp.type='highpass';hp.frequency.value=7000;
+    const ng=audioCtx.createGain();ng.gain.setValueAtTime(0.5,t);ng.gain.exponentialRampToValueAtTime(0.001,t+0.06);
+    n.connect(hp);hp.connect(ng);ng.connect(g);n.start(t);
+  } else {
+    const buf=audioCtx.createBuffer(1,audioCtx.sampleRate*0.03,audioCtx.sampleRate);
+    const d=buf.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=(Math.random()*2-1)*0.5;
+    const n=audioCtx.createBufferSource();n.buffer=buf;
+    const hp=audioCtx.createBiquadFilter();hp.type='highpass';hp.frequency.value=9000;
+    const ng=audioCtx.createGain();ng.gain.setValueAtTime(vol*0.25,t);ng.gain.exponentialRampToValueAtTime(0.001,t+0.03);
+    n.connect(hp);hp.connect(ng);ng.connect(audioCtx.destination);n.start(t);
+  }
+}
+
+function synthBass(tier,t,vol){
+  const g=audioCtx.createGain();g.connect(audioCtx.destination);g.gain.setValueAtTime(vol*0.7,t);
+  const freq=55; // A1
+  if(tier==='premium'){
+    // Saw + sub + filter sweep
+    const o1=audioCtx.createOscillator();o1.type='sawtooth';o1.frequency.value=freq;
+    const o2=audioCtx.createOscillator();o2.type='sine';o2.frequency.value=freq;o2.detune.value=-5;
+    const o3=audioCtx.createOscillator();o3.type='square';o3.frequency.value=freq*2;
+    const lp=audioCtx.createBiquadFilter();lp.type='lowpass';lp.frequency.setValueAtTime(2000,t);lp.frequency.exponentialRampToValueAtTime(200,t+0.3);lp.Q.value=4;
+    const eg=audioCtx.createGain();eg.gain.setValueAtTime(1,t);eg.gain.setValueAtTime(0.8,t+0.05);eg.gain.exponentialRampToValueAtTime(0.001,t+0.4);
+    [o1,o2].forEach(o=>{const mg=audioCtx.createGain();mg.gain.value=0.4;o.connect(mg);mg.connect(lp)});
+    const mg3=audioCtx.createGain();mg3.gain.value=0.15;o3.connect(mg3);mg3.connect(lp);
+    lp.connect(eg);eg.connect(g);
+    [o1,o2,o3].forEach(o=>{o.start(t);o.stop(t+0.45)});
+    // Distortion
+    const ws=audioCtx.createWaveShaper();ws.curve=makeDistCurve(50);g.disconnect();g.connect(ws);ws.connect(audioCtx.destination);
+  } else if(tier==='standard'){
+    const o=audioCtx.createOscillator();o.type='sawtooth';o.frequency.value=freq;
+    const lp=audioCtx.createBiquadFilter();lp.type='lowpass';lp.frequency.setValueAtTime(1200,t);lp.frequency.exponentialRampToValueAtTime(300,t+0.2);
+    const eg=audioCtx.createGain();eg.gain.setValueAtTime(0.8,t);eg.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+    o.connect(lp);lp.connect(eg);eg.connect(g);o.start(t);o.stop(t+0.35);
+  } else {
+    const o=audioCtx.createOscillator();o.type='sine';o.frequency.value=freq;
+    const eg=audioCtx.createGain();eg.gain.setValueAtTime(vol*0.5,t);eg.gain.exponentialRampToValueAtTime(0.001,t+0.2);
+    o.connect(eg);eg.connect(audioCtx.destination);o.start(t);o.stop(t+0.25);
+  }
+}
+
+function synthLead(tier,t,vol){
+  const g=audioCtx.createGain();g.connect(audioCtx.destination);g.gain.setValueAtTime(vol*0.5,t);
+  const freq=440; // A4
+  if(tier==='premium'){
+    // Supersaw-style
+    const oscs=[];
+    for(let i=0;i<5;i++){
+      const o=audioCtx.createOscillator();o.type='sawtooth';o.frequency.value=freq;o.detune.value=(i-2)*12;
+      const mg=audioCtx.createGain();mg.gain.value=0.2;o.connect(mg);mg.connect(g);o.start(t);o.stop(t+0.35);oscs.push(o);
+    }
+    const lp=audioCtx.createBiquadFilter();lp.type='lowpass';lp.frequency.setValueAtTime(4000,t);lp.frequency.exponentialRampToValueAtTime(800,t+0.3);lp.Q.value=3;
+    g.disconnect();g.connect(lp);lp.connect(audioCtx.destination);
+    g.gain.setValueAtTime(vol*0.5,t);g.gain.setValueAtTime(vol*0.45,t+0.05);g.gain.exponentialRampToValueAtTime(0.001,t+0.35);
+  } else if(tier==='standard'){
+    const o1=audioCtx.createOscillator();o1.type='sawtooth';o1.frequency.value=freq;
+    const o2=audioCtx.createOscillator();o2.type='sawtooth';o2.frequency.value=freq;o2.detune.value=7;
+    [o1,o2].forEach(o=>{const mg=audioCtx.createGain();mg.gain.value=0.35;o.connect(mg);mg.connect(g);o.start(t);o.stop(t+0.25)});
+    g.gain.exponentialRampToValueAtTime(0.001,t+0.25);
+  } else {
+    const o=audioCtx.createOscillator();o.type='sine';o.frequency.value=freq;
+    const eg=audioCtx.createGain();eg.gain.setValueAtTime(vol*0.3,t);eg.gain.exponentialRampToValueAtTime(0.001,t+0.15);
+    o.connect(eg);eg.connect(audioCtx.destination);o.start(t);o.stop(t+0.2);
+  }
+}
+
+function synthPad(tier,t,vol){
+  const g=audioCtx.createGain();g.connect(audioCtx.destination);
+  const freq=220;
+  if(tier==='premium'){
+    // Lush chord: root + 3rd + 5th with slow attack/release
+    const notes=[freq, freq*1.25, freq*1.5, freq*2];
+    g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol*0.3,t+0.15);g.gain.setValueAtTime(vol*0.3,t+0.4);g.gain.exponentialRampToValueAtTime(0.001,t+0.8);
+    notes.forEach(f=>{
+      const o1=audioCtx.createOscillator();o1.type='sine';o1.frequency.value=f;
+      const o2=audioCtx.createOscillator();o2.type='triangle';o2.frequency.value=f;o2.detune.value=5;
+      [o1,o2].forEach(o=>{const mg=audioCtx.createGain();mg.gain.value=0.1;o.connect(mg);mg.connect(g);o.start(t);o.stop(t+0.85)});
+    });
+    // LFO vibrato
+    const lfo=audioCtx.createOscillator();lfo.type='sine';lfo.frequency.value=4;
+    const lfoG=audioCtx.createGain();lfoG.gain.value=3;
+    lfo.connect(lfoG);lfo.start(t);lfo.stop(t+0.85);
+  } else if(tier==='standard'){
+    g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol*0.25,t+0.1);g.gain.exponentialRampToValueAtTime(0.001,t+0.5);
+    [freq, freq*1.5].forEach(f=>{
+      const o=audioCtx.createOscillator();o.type='triangle';o.frequency.value=f;
+      const mg=audioCtx.createGain();mg.gain.value=0.3;o.connect(mg);mg.connect(g);o.start(t);o.stop(t+0.55);
+    });
+  } else {
+    const o=audioCtx.createOscillator();o.type='sine';o.frequency.value=freq;
+    const eg=audioCtx.createGain();eg.gain.setValueAtTime(0,t);eg.gain.linearRampToValueAtTime(vol*0.2,t+0.05);eg.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+    o.connect(eg);eg.connect(audioCtx.destination);o.start(t);o.stop(t+0.35);
+  }
+}
+
+function makeDistCurve(amount){
+  const n=256,curve=new Float32Array(n);
+  for(let i=0;i<n;i++){const x=i*2/n-1;curve[i]=(Math.PI+amount)*x/(Math.PI+amount*Math.abs(x));}
+  return curve;
+}
+
+// ========== UI BUILDING ==========
+function buildLeftPanel(){
+  const container=document.getElementById('inst-controls');
+  container.innerHTML='';
+  INSTRUMENTS.forEach((inst,idx)=>{
+    const div=document.createElement('div');div.className='inst-group';
+    div.innerHTML=`
+      <div class="inst-name"><span style="background:${inst.color}"></span>${inst.name}</div>
+      <div class="tier-btns">
+        ${TIER_ORDER.map(t=>`<button class="tier-btn ${t} ${defaultTier[idx]===t?'active':''}" data-inst="${idx}" data-tier="${t}">${TIERS[t].label}<br><small>${TIERS[t].cost}cr</small></button>`).join('')}
+      </div>
+      <div class="vol-row"><label>Vol</label><input type="range" min="0" max="100" value="${Math.round(volumes[idx]*100)}" data-inst="${idx}" class="vol-slider"></div>
+    `;
+    container.appendChild(div);
+  });
+  // Tier button clicks
+  container.querySelectorAll('.tier-btn').forEach(btn=>{
+    btn.addEventListener('click',()=>{
+      const inst=+btn.dataset.inst, tier=btn.dataset.tier;
+      defaultTier[inst]=tier;
+      btn.parentElement.querySelectorAll('.tier-btn').forEach(b=>b.classList.remove('active'));
+      btn.classList.add('active');
+    });
+  });
+  // Volume sliders
+  container.querySelectorAll('.vol-slider').forEach(sl=>{
+    sl.addEventListener('input',()=>{volumes[+sl.dataset.inst]=sl.value/100;});
+  });
+}
+
+function buildSequencer(){
+  // Header
+  const header=document.getElementById('sequencer-header');
+  header.innerHTML='<div></div>';
+  for(let s=0;s<STEPS;s++){
+    const d=document.createElement('div');d.className='beat-num'+(STRONG_BEATS.includes(s)?' strong':'');
+    d.textContent=s+1;header.appendChild(d);
+  }
+  // Grid
+  const seq=document.getElementById('sequencer');seq.innerHTML='';
+  INSTRUMENTS.forEach((inst,iIdx)=>{
+    const row=document.createElement('div');row.className='seq-row';
+    const label=document.createElement('div');label.className='seq-label';
+    label.innerHTML=`<span style="color:${inst.color}">${inst.name}</span>`;
+    row.appendChild(label);
+    for(let s=0;s<STEPS;s++){
+      const cell=document.createElement('div');cell.className='seq-cell';
+      cell.dataset.inst=iIdx;cell.dataset.step=s;
+      cell.addEventListener('click',(e)=>{
+        if(e.shiftKey && grid[iIdx][s]){
+          cycleTier(iIdx,s);
+        } else {
+          toggleCell(iIdx,s);
+        }
+      });
+      cell.addEventListener('contextmenu',(e)=>{e.preventDefault();if(grid[iIdx][s])cycleTier(iIdx,s);});
+      row.appendChild(cell);
+    }
+    seq.appendChild(row);
+  });
+  renderGrid();
+}
+
+function toggleCell(inst,step){
+  if(grid[inst][step]){
+    grid[inst][step]=null;
+  } else {
+    grid[inst][step]=defaultTier[inst];
+  }
+  renderGrid();
+  updateAnalytics();
+}
+
+function cycleTier(inst,step){
+  const cur=grid[inst][step];
+  const idx=TIER_ORDER.indexOf(cur);
+  grid[inst][step]=TIER_ORDER[(idx+1)%3];
+  renderGrid();
+  updateAnalytics();
+}
+
+function renderGrid(){
+  const cells=document.querySelectorAll('.seq-cell');
+  cells.forEach(cell=>{
+    const i=+cell.dataset.inst,s=+cell.dataset.step;
+    const tier=grid[i][s];
+    cell.className='seq-cell'+(currentStep===s?' active-beat':'');
+    cell.textContent='';
+    if(tier){
+      cell.classList.add('on',tier);
+      cell.textContent=tier[0].toUpperCase();
+      const tag=document.createElement('span');tag.className='cost-tag';tag.textContent=TIERS[tier].cost;
+      cell.appendChild(tag);
+    }
+  });
+}
+
+// ========== ANALYTICS ==========
+function calcBarCost(){
+  let total=0;
+  for(let i=0;i<6;i++)for(let s=0;s<STEPS;s++){
+    if(grid[i][s])total+=TIERS[grid[i][s]].cost;
+  }
+  return total;
+}
+
+function calcQuality(){
+  let notes=0,score=0;
+  for(let i=0;i<6;i++)for(let s=0;s<STEPS;s++){
+    if(grid[i][s]){
+      notes++;
+      if(grid[i][s]==='premium')score+=3;
+      else if(grid[i][s]==='standard')score+=2;
+      else score+=1;
+    }
+  }
+  return notes?score/(notes*3)*100:0;
+}
+
+function countNotes(){
+  let p=0,s=0,e=0;
+  for(let i=0;i<6;i++)for(let st=0;st<STEPS;st++){
+    const t=grid[i][st];
+    if(t==='premium')p++;else if(t==='standard')s++;else if(t==='economy')e++;
+  }
+  return {total:p+s+e,p,s,e};
+}
+
+function updateAnalytics(){
+  const barCost=calcBarCost();
+  const quality=calcQuality();
+  const notes=countNotes();
+  const efficiency=barCost>0?(quality/barCost*10).toFixed(2):'-';
+
+  document.getElementById('cost-per-bar').textContent=barCost;
+  document.getElementById('quality-score').textContent=quality.toFixed(1)+'%';
+  document.getElementById('quality-fill').style.width=quality+'%';
+  document.getElementById('quality-fill').style.background=quality>70?'var(--green)':quality>40?'var(--yellow)':'var(--red)';
+
+  const effEl=document.getElementById('efficiency-ratio');
+  effEl.textContent=efficiency;
+  effEl.className='stat-value '+(efficiency==='-'?'':(parseFloat(efficiency)>3?'efficiency-good':parseFloat(efficiency)>1?'efficiency-mid':'efficiency-low'));
+
+  document.getElementById('active-notes').textContent=notes.total;
+  document.getElementById('tier-breakdown').textContent=`P:${notes.p} S:${notes.s} E:${notes.e}`;
+
+  // Cost projection
+  const costPerLoop=barCost;
+  document.getElementById('cost-loop').textContent=costPerLoop;
+  document.getElementById('loops-left').textContent=costPerLoop>0?Math.floor(budget/costPerLoop):'--';
+
+  // Budget bar
+  updateBudgetBar();
+  drawCostChart();
+}
+
+function updateBudgetBar(){
+  const pct=budget/MAX_BUDGET*100;
+  const bar=document.getElementById('budget-bar');
+  bar.style.width=pct+'%';
+  if(pct>60)bar.style.background='linear-gradient(90deg,#00e676,#69f0ae)';
+  else if(pct>30)bar.style.background='linear-gradient(90deg,#fdd835,#ffeb3b)';
+  else bar.style.background='linear-gradient(90deg,#ff5252,#ff8a80)';
+  document.getElementById('budget-text').textContent=`${Math.round(budget)} / ${MAX_BUDGET} credits`;
+
+  const warn=document.getElementById('budget-warning');
+  warn.style.display=budget<200?'block':'none';
+}
+
+function drawCostChart(){
+  const canvas=document.getElementById('cost-chart');
+  const ctx=canvas.getContext('2d');
+  canvas.width=canvas.offsetWidth*2;canvas.height=canvas.offsetHeight*2;
+  ctx.scale(2,2);
+  const w=canvas.offsetWidth,h=canvas.offsetHeight;
+  ctx.clearRect(0,0,w,h);
+
+  if(costHistory.length<2)return;
+  const max=Math.max(...costHistory,1);
+  ctx.beginPath();ctx.strokeStyle='#7c4dff';ctx.lineWidth=1.5;
+  costHistory.forEach((v,i)=>{
+    const x=i/(costHistory.length-1)*w;
+    const y=h-v/max*(h-8)-4;
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+  // Fill
+  ctx.lineTo(w,h);ctx.lineTo(0,h);ctx.closePath();
+  ctx.fillStyle='rgba(124,77,255,0.15)';ctx.fill();
+}
+
+function drawSparkline(){
+  const canvas=document.getElementById('sparkline');
+  const ctx=canvas.getContext('2d');
+  canvas.width=canvas.offsetWidth*2;canvas.height=canvas.offsetHeight*2;
+  ctx.scale(2,2);
+  const w=canvas.offsetWidth,h=canvas.offsetHeight;
+  ctx.clearRect(0,0,w,h);
+
+  if(budgetHistory.length<2)return;
+  const min=0,max=MAX_BUDGET;
+  ctx.beginPath();ctx.strokeStyle='#00e676';ctx.lineWidth=1.5;
+  const recent=budgetHistory.slice(-60);
+  recent.forEach((v,i)=>{
+    const x=i/(recent.length-1)*w;
+    const y=h-(v-min)/(max-min)*(h-8)-4;
+    i===0?ctx.moveTo(x,y):ctx.lineTo(x,y);
+  });
+  ctx.stroke();
+  ctx.lineTo(w,h);ctx.lineTo(0,h);ctx.closePath();
+  ctx.fillStyle='rgba(0,230,118,0.1)';ctx.fill();
+}
+
+// ========== PLAYBACK ==========
+function startPlayback(){
+  ensureAudio();
+  if(playing)return;
+  playing=true;
+  currentStep=-1;
+  document.getElementById('btn-play').textContent='|| Pause';
+  tick();
+}
+
+function tick(){
+  if(!playing)return;
+  currentStep=(currentStep+1)%STEPS;
+
+  const stepInterval = 60/bpm/4; // 16th notes
+  const now=audioCtx.currentTime;
+
+  // Play notes for this step and deduct budget
+  for(let i=0;i<6;i++){
+    let tier=grid[i][currentStep];
+    if(!tier)continue;
+
+    // Fallback degradation
+    if(fallbackMode){
+      if(budget<50) tier='economy';
+      else if(budget<200){
+        if(tier==='premium') tier='standard';
+      }
+    }
+
+    // Check budget
+    const cost=TIERS[tier].cost;
+    if(budget>=cost){
+      budget-=cost;
+      barCostAccum+=cost;
+      playNote(i,tier,now);
+    } else if(budget>=1){
+      // Force economy if can't afford
+      budget-=1;
+      barCostAccum+=1;
+      playNote(i,'economy',now);
+    }
+    // else skip note entirely
+  }
+
+  // Update visuals
+  renderGrid();
+  updateBudgetBar();
+  budgetHistory.push(budget);
+
+  // Per-bar cost tracking
+  if(currentStep===STEPS-1){
+    costHistory.push(barCostAccum);
+    if(costHistory.length>30)costHistory.shift();
+    barCostAccum=0;
+  }
+
+  // Burn rate
+  const burnRate=calcBarCost()*(bpm/60*4/STEPS);
+  document.getElementById('burn-rate').innerHTML=burnRate.toFixed(1)+' <small style="font-size:11px">cr/sec</small>';
+
+  updateAnalytics();
+  drawSparkline();
+
+  // Check for budget depletion
+  if(budget<=0){
+    budget=0;
+    stopPlayback();
+    return;
+  }
+
+  loopId=setTimeout(tick, stepInterval*1000);
+}
+
+function stopPlayback(){
+  playing=false;
+  clearTimeout(loopId);
+  currentStep=-1;
+  document.getElementById('btn-play').textContent='\u25B6 Play';
+  renderGrid();
+}
+
+// ========== AUTO-OPTIMIZER ==========
+function autoOptimize(){
+  const barCost=calcBarCost();
+  if(barCost===0)return;
+
+  // Collect all active notes
+  const notes=[];
+  for(let i=0;i<6;i++)for(let s=0;s<STEPS;s++){
+    if(grid[i][s])notes.push({i,s,tier:grid[i][s]});
+  }
+  if(!notes.length)return;
+
+  // Priority: strong beats get higher priority, kick/snare on strong beats highest
+  notes.forEach(n=>{
+    const isStrong=STRONG_BEATS.includes(n.s);
+    const isDrum=n.i<=2;
+    n.priority=(isStrong?10:1)*(isDrum&&isStrong?3:1)*(n.i===4||n.i===5?1.5:1);
+  });
+  notes.sort((a,b)=>b.priority-a.priority);
+
+  // Start all at economy and upgrade within budget
+  notes.forEach(n=>grid[n.i][n.s]='economy');
+  let remaining=budget;
+
+  // Calculate how many loops we want to afford (at least 4)
+  const targetLoops=Math.max(4,Math.floor(remaining/notes.length));
+  const budgetPerLoop=remaining/targetLoops;
+
+  // Greedy upgrade: highest priority first
+  for(const n of notes){
+    const econCost=1;
+    const stdUpgrade=5-1; // additional cost to upgrade to standard
+    const premUpgrade=15-5; // additional cost to upgrade from std to premium
+
+    const loopCostIfStd=(budgetPerLoop-econCost>=stdUpgrade)?'standard':null;
+    const loopCostIfPrem=(budgetPerLoop-econCost>=stdUpgrade+premUpgrade)?'premium':null;
+
+    if(loopCostIfPrem && remaining>=15*targetLoops){
+      grid[n.i][n.s]='premium';
+      remaining-=(15-1)*targetLoops; // account for economy already allocated
+    } else if(loopCostIfStd && remaining>=5*targetLoops){
+      grid[n.i][n.s]='standard';
+      remaining-=(5-1)*targetLoops;
+    }
+  }
+
+  renderGrid();
+  updateAnalytics();
+}
+
+// ========== PRESETS ==========
+const PRESETS={
+  rock:{
+    0:[0,0,0,0,0,0,0,0,1,0,0,0,1,0,0,0],// kick
+    1:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],// snare
+    2:[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0],// hh
+    3:[1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,0],// bass
+    4:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,1,1],// lead
+    5:[1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0] // pad
+  },
+  techno:{
+    0:[1,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0],
+    1:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,1],
+    2:[1,0,1,0,1,0,1,0,1,0,1,0,1,0,1,0],
+    3:[1,0,0,1,0,0,1,0,0,0,1,0,0,1,0,0],
+    4:[0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,1],
+    5:[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+  },
+  ambient:{
+    0:[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    1:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    2:[0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0],
+    3:[1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0],
+    4:[0,0,0,0,1,0,0,0,0,0,0,0,1,0,0,0],
+    5:[1,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0]
+  },
+  jazz:{
+    0:[1,0,0,0,0,0,1,0,0,0,1,0,0,0,0,0],
+    1:[0,0,0,0,1,0,0,0,0,1,0,0,1,0,0,0],
+    2:[1,0,1,1,0,1,1,0,1,0,1,1,0,1,1,0],
+    3:[1,0,0,0,0,1,0,0,1,0,0,0,0,1,0,0],
+    4:[0,0,1,0,0,0,0,1,0,0,1,0,0,0,0,1],
+    5:[1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0]
+  }
+};
+
+function loadPreset(name){
+  if(!PRESETS[name])return;
+  const p=PRESETS[name];
+  for(let i=0;i<6;i++){
+    for(let s=0;s<STEPS;s++){
+      grid[i][s]=p[i][s]?defaultTier[i]:null;
+    }
+  }
+  renderGrid();
+  updateAnalytics();
+}
+
+// ========== EVENT WIRING ==========
+function init(){
+  buildLeftPanel();
+  buildSequencer();
+  updateAnalytics();
+
+  document.getElementById('btn-play').addEventListener('click',()=>{
+    if(playing)stopPlayback();else startPlayback();
+  });
+  document.getElementById('btn-stop').addEventListener('click',stopPlayback);
+
+  document.getElementById('bpm-slider').addEventListener('input',(e)=>{
+    bpm=+e.target.value;
+    document.getElementById('bpm-val').textContent=bpm;
+  });
+
+  document.getElementById('btn-optimize').addEventListener('click',autoOptimize);
+
+  document.getElementById('btn-fallback').addEventListener('click',()=>{
+    fallbackMode=!fallbackMode;
+    const btn=document.getElementById('btn-fallback');
+    btn.textContent='Fallback: '+(fallbackMode?'ON':'OFF');
+    btn.classList.toggle('active-toggle',fallbackMode);
+  });
+
+  document.getElementById('btn-refill').addEventListener('click',()=>{
+    budget=MAX_BUDGET;
+    budgetHistory=[MAX_BUDGET];
+    costHistory=[];
+    updateBudgetBar();
+    updateAnalytics();
+    drawSparkline();
+  });
+
+  document.getElementById('preset-select').addEventListener('change',(e)=>{
+    if(e.target.value)loadPreset(e.target.value);
+  });
+
+  // Periodic analytics refresh
+  setInterval(()=>{
+    if(playing){drawSparkline();drawCostChart();}
+  },500);
+}
+
+document.addEventListener('DOMContentLoaded',init);
+</script>
+</body>
+</html>

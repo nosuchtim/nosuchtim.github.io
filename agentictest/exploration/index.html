@@ -1,0 +1,1231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sound Explorer</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a12;color:#c8c8d8;font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;height:100vh;display:flex;flex-direction:column}
+#topBar{height:48px;background:#0e0e1a;border-bottom:1px solid #1a1a2e;display:flex;align-items:center;padding:0 16px;gap:20px;flex-shrink:0}
+.stat-label{color:#666;font-size:11px;text-transform:uppercase;letter-spacing:1px}
+.stat-value{color:#e0e0f0;font-size:14px;font-weight:600}
+.stat-group{display:flex;flex-direction:column;gap:1px}
+.progress-bar{width:120px;height:6px;background:#1a1a2e;border-radius:3px;overflow:hidden}
+.progress-fill{height:100%;background:linear-gradient(90deg,#4a6cf7,#6ee7b7);transition:width .5s ease;border-radius:3px}
+.mode-badge{padding:3px 10px;border-radius:10px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:1px}
+.mode-exploring{background:#1a3a2a;color:#6ee7b7}
+.mode-listening{background:#3a2a1a;color:#f7b74a}
+.mode-experimenting{background:#2a1a3a;color:#b74af7}
+#mainArea{flex:1;display:flex;overflow:hidden}
+#mapContainer{flex:1;position:relative;display:flex;align-items:center;justify-content:center;min-width:0}
+canvas#mapCanvas{border:1px solid #1a1a2e;cursor:crosshair}
+#tooltip{position:absolute;background:#16162a;border:1px solid #2a2a4e;border-radius:6px;padding:8px 12px;font-size:12px;pointer-events:none;opacity:0;transition:opacity .15s;z-index:10;max-width:220px}
+#rightPanel{width:300px;background:#0c0c18;border-left:1px solid #1a1a2e;display:flex;flex-direction:column;flex-shrink:0}
+#journalHeader{padding:12px 16px;border-bottom:1px solid #1a1a2e;font-size:13px;font-weight:600;color:#8888aa;text-transform:uppercase;letter-spacing:1px}
+#journalList{flex:1;overflow-y:auto;padding:8px}
+#journalList::-webkit-scrollbar{width:4px}
+#journalList::-webkit-scrollbar-thumb{background:#2a2a4e;border-radius:2px}
+.journal-entry{padding:8px 10px;margin-bottom:4px;border-radius:6px;font-size:12px;line-height:1.5;border-left:3px solid transparent;background:#0e0e1a}
+.journal-entry.rare{border-left-color:#f7c74a;background:#14120a}
+.journal-entry .je-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:2px}
+.journal-entry .je-coord{color:#6a6a8a;font-size:10px;font-family:monospace}
+.journal-entry .je-region{font-weight:600;font-size:11px}
+.journal-entry .je-desc{color:#aab}
+.journal-entry .je-time{color:#555;font-size:10px}
+.journal-entry .je-novelty{font-size:10px;padding:1px 5px;border-radius:8px;background:#1a1a2e;color:#8888aa}
+.region-melodic{color:#f0c060}
+.region-rhythmic{color:#60d0d0}
+.region-harmonic{color:#60c060}
+.region-experimental{color:#c060c0}
+#bottomPanel{height:160px;background:#0c0c18;border-top:1px solid #1a1a2e;display:flex;flex-shrink:0}
+#collectionArea{flex:1;padding:10px;overflow-x:auto;display:flex;flex-direction:column}
+#collectionHeader{display:flex;align-items:center;gap:12px;margin-bottom:8px;flex-shrink:0}
+#collectionHeader h3{font-size:12px;color:#8888aa;text-transform:uppercase;letter-spacing:1px}
+#collectionGrid{display:flex;flex-wrap:wrap;gap:4px;overflow-y:auto;flex:1}
+#collectionGrid::-webkit-scrollbar{width:3px}
+#collectionGrid::-webkit-scrollbar-thumb{background:#2a2a4e;border-radius:2px}
+.coll-tile{width:36px;height:36px;border-radius:4px;cursor:pointer;position:relative;transition:transform .1s,box-shadow .1s;display:flex;align-items:center;justify-content:center;font-size:10px}
+.coll-tile:hover{transform:scale(1.2);box-shadow:0 0 8px rgba(255,255,255,.2);z-index:2}
+.coll-tile.selected{outline:2px solid #fff;outline-offset:1px}
+.coll-tile.favorite::after{content:'\u2665';position:absolute;top:-2px;right:-2px;font-size:8px;color:#f44}
+#waveformArea{width:240px;border-left:1px solid #1a1a2e;padding:10px;display:flex;flex-direction:column;align-items:center;flex-shrink:0}
+#waveformArea h3{font-size:11px;color:#8888aa;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+canvas#waveformCanvas{width:220px;height:80px;border-radius:4px;background:#08080f}
+#waveformInfo{font-size:10px;color:#666;margin-top:4px;text-align:center}
+#controls{width:200px;border-left:1px solid #1a1a2e;padding:10px;display:flex;flex-direction:column;gap:6px;flex-shrink:0}
+#controls h3{font-size:11px;color:#8888aa;text-transform:uppercase;letter-spacing:1px;margin-bottom:2px}
+.ctrl-btn{background:#16162a;border:1px solid #2a2a4e;color:#aab;padding:6px 10px;border-radius:4px;cursor:pointer;font-size:11px;transition:background .15s,color .15s;text-align:left}
+.ctrl-btn:hover{background:#1e1e36;color:#dde}
+.ctrl-btn.active{background:#1a2a4a;border-color:#4a6cf7;color:#8ab4f8}
+.ctrl-row{display:flex;gap:4px}
+.ctrl-row .ctrl-btn{flex:1;text-align:center}
+label.ctrl-label{font-size:10px;color:#666;display:flex;align-items:center;gap:6px}
+input[type=range]{flex:1;accent-color:#4a6cf7;height:4px}
+.ctrl-sep{height:1px;background:#1a1a2e;margin:2px 0}
+</style>
+</head>
+<body>
+
+<div id="topBar">
+  <div class="stat-group">
+    <span class="stat-label">Coverage</span>
+    <div style="display:flex;align-items:center;gap:8px">
+      <div class="progress-bar"><div class="progress-fill" id="coverageBar" style="width:0%"></div></div>
+      <span class="stat-value" id="coveragePct">0%</span>
+    </div>
+  </div>
+  <div class="stat-group">
+    <span class="stat-label">Discoveries</span>
+    <span class="stat-value"><span id="uniqueCount">0</span> unique / <span id="rareCount">0</span> rare</span>
+  </div>
+  <div class="stat-group">
+    <span class="stat-label">Region</span>
+    <span class="stat-value" id="currentRegion">---</span>
+  </div>
+  <div class="stat-group">
+    <span class="stat-label">Position</span>
+    <span class="stat-value" id="currentCoords">[0, 0]</span>
+  </div>
+  <div class="stat-group">
+    <span class="stat-label">Novelty Score</span>
+    <span class="stat-value" id="noveltyScore">0</span>
+  </div>
+  <div id="modeBadge" class="mode-badge mode-exploring">Exploring</div>
+</div>
+
+<div id="mainArea">
+  <div id="mapContainer">
+    <canvas id="mapCanvas"></canvas>
+    <div id="tooltip"></div>
+  </div>
+  <div id="rightPanel">
+    <div id="journalHeader">Discovery Journal</div>
+    <div id="journalList"></div>
+  </div>
+</div>
+
+<div id="bottomPanel">
+  <div id="collectionArea">
+    <div id="collectionHeader">
+      <h3>Sound Collection</h3>
+      <span style="font-size:10px;color:#555" id="collCount">0 sounds</span>
+    </div>
+    <div id="collectionGrid" id="collGrid"></div>
+  </div>
+  <div id="waveformArea">
+    <h3>Waveform</h3>
+    <canvas id="waveformCanvas" width="220" height="80"></canvas>
+    <div id="waveformInfo">Click a tile to preview</div>
+  </div>
+  <div id="controls">
+    <h3>Controls</h3>
+    <button class="ctrl-btn" id="btnAutoExplore" onclick="toggleAutoExplore()">Auto-Explore</button>
+    <button class="ctrl-btn" id="btnRandomJump" onclick="randomJump()">Random Jump</button>
+    <button class="ctrl-btn" id="btnFocusMode" onclick="toggleFocusMode()">Focus Mode</button>
+    <div class="ctrl-sep"></div>
+    <button class="ctrl-btn" id="btnCombine" onclick="toggleCombineMode()">Combine Mode</button>
+    <div class="ctrl-sep"></div>
+    <label class="ctrl-label">Speed <input type="range" id="speedSlider" min="1" max="10" value="4" oninput="autoSpeed=this.value"></label>
+    <label class="ctrl-label">Volume <input type="range" id="volSlider" min="0" max="100" value="60" oninput="setVolume(this.value)"></label>
+    <div class="ctrl-sep"></div>
+    <button class="ctrl-btn" onclick="exportMap()">Export Map</button>
+    <div class="ctrl-row">
+      <button class="ctrl-btn" onclick="resetExploration()">Reset</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// CONSTANTS & STATE
+// ============================================================
+const GRID = 24;
+const CELL = 24;
+const MAP_W = GRID * CELL;
+const MAP_H = GRID * CELL;
+const canvas = document.getElementById('mapCanvas');
+const ctx = canvas.getContext('2d');
+canvas.width = MAP_W;
+canvas.height = MAP_H;
+const wfCanvas = document.getElementById('waveformCanvas');
+const wfCtx = wfCanvas.getContext('2d');
+
+let audioCtx = null;
+let masterGain = null;
+let analyser = null;
+let ambientOsc = null;
+let ambientGain = null;
+
+const state = {
+  agentX: Math.floor(GRID / 2),
+  agentY: Math.floor(GRID / 2),
+  explored: new Set(),
+  discoveries: [],
+  favorites: new Set(),
+  autoExplore: false,
+  focusMode: false,
+  combineMode: false,
+  combineSelected: [],
+  mode: 'exploring',
+  totalNovelty: 0,
+  lastMoveTime: 0,
+  trail: [],
+  hoveredCell: null,
+  currentlyPlaying: null,
+  revealAnimations: {},
+};
+
+let autoSpeed = 4;
+let volume = 0.6;
+
+// ============================================================
+// SEEDED RANDOM for deterministic map
+// ============================================================
+function seededRandom(seed) {
+  let s = seed;
+  return function() {
+    s = (s * 16807 + 0) % 2147483647;
+    return (s - 1) / 2147483646;
+  };
+}
+const mapSeed = 42;
+
+function cellRand(x, y, offset = 0) {
+  const rng = seededRandom(x * 1000 + y * 37 + offset + mapSeed);
+  return rng();
+}
+
+// ============================================================
+// REGION DEFINITIONS
+// ============================================================
+function getRegion(x, y) {
+  const cx = GRID / 2, cy = GRID / 2;
+  const nx = (x - cx) / cx, ny = (y - cy) / cy;
+  // Distance-based blending near borders
+  if (nx <= 0 && ny <= 0) return { name: 'Melodic Plains', id: 'melodic', color: [240, 192, 96] };
+  if (nx > 0 && ny <= 0) return { name: 'Rhythmic Caves', id: 'rhythmic', color: [96, 208, 208] };
+  if (nx <= 0 && ny > 0) return { name: 'Harmonic Forest', id: 'harmonic', color: [96, 192, 96] };
+  return { name: 'Experimental Void', id: 'experimental', color: [192, 96, 192] };
+}
+
+function getRegionBlend(x, y) {
+  const region = getRegion(x, y);
+  const cx = GRID / 2, cy = GRID / 2;
+  const dx = Math.abs(x - cx) / cx;
+  const dy = Math.abs(y - cy) / cy;
+  const edgeDist = Math.min(dx, dy);
+  const blend = Math.max(0, 1 - edgeDist * 3);
+  return { ...region, blend };
+}
+
+function getCellColor(x, y, alpha = 1) {
+  const reg = getRegion(x, y);
+  const r = cellRand(x, y, 1);
+  const variation = 0.7 + r * 0.6;
+  const c = reg.color;
+  return `rgba(${Math.floor(c[0]*variation)},${Math.floor(c[1]*variation)},${Math.floor(c[2]*variation)},${alpha})`;
+}
+
+function isRareDiscovery(x, y) {
+  return cellRand(x, y, 99) < 0.08;
+}
+
+function getCellDescription(x, y) {
+  const reg = getRegion(x, y);
+  const r1 = cellRand(x, y, 10);
+  const r2 = cellRand(x, y, 20);
+  const r3 = cellRand(x, y, 30);
+  const rare = isRareDiscovery(x, y);
+
+  const melodicDescs = ['Pentatonic phrase in C', 'Gentle arpeggio', 'Rising melody', 'Falling scale', 'Modal motif', 'Soft bell tone', 'Singing tone', 'Bright note cluster', 'Warm fifth interval', 'Airy flute-like tone'];
+  const rhythmicDescs = ['Kick and hi-hat', 'Snare burst', 'Metallic click', 'Rhythmic pulse', 'Clave pattern', 'Tom fill', 'Shaker groove', 'Rimshot echo', 'Double-time hit', 'Syncopated knock'];
+  const harmonicDescs = ['Lush Dm9 chord', 'Cmaj7 pad', 'Stacked fifths', 'Minor triad swell', 'Suspended chord', 'Warm Am7', 'Ethereal Fmaj9', 'Dense cluster', 'Open voicing', 'Rich Gsus4'];
+  const expDescs = ['Detuned oscillator', 'Ring mod texture', 'Noise sweep', 'Microtonal bend', 'Granular burst', 'Glitch artifact', 'Sub-bass rumble', 'Spectral freeze', 'Bitcrushed tone', 'Feedback squeal'];
+
+  const extras = ['with tremolo', 'with delay', 'with reverb tail', 'staccato', 'legato', 'with vibrato', 'filtered', 'distorted'];
+
+  let descs;
+  if (reg.id === 'melodic') descs = melodicDescs;
+  else if (reg.id === 'rhythmic') descs = rhythmicDescs;
+  else if (reg.id === 'harmonic') descs = harmonicDescs;
+  else descs = expDescs;
+
+  let desc = descs[Math.floor(r1 * descs.length)];
+  if (r2 > 0.5) desc += ' ' + extras[Math.floor(r3 * extras.length)];
+  if (rare) desc = 'RARE: ' + desc;
+  return desc;
+}
+
+function getNoveltyScore(x, y) {
+  const base = Math.floor(cellRand(x, y, 50) * 6) + 3;
+  return isRareDiscovery(x, y) ? base + 5 : base;
+}
+
+// ============================================================
+// AUDIO ENGINE
+// ============================================================
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = volume;
+  analyser = audioCtx.createAnalyser();
+  analyser.fftSize = 256;
+  masterGain.connect(analyser);
+  analyser.connect(audioCtx.destination);
+  startAmbient();
+}
+
+function setVolume(v) {
+  volume = v / 100;
+  if (masterGain) masterGain.gain.value = volume;
+}
+
+function startAmbient() {
+  ambientGain = audioCtx.createGain();
+  ambientGain.gain.value = 0.04;
+  ambientGain.connect(masterGain);
+
+  ambientOsc = audioCtx.createOscillator();
+  ambientOsc.type = 'sine';
+  ambientOsc.frequency.value = 55;
+  const lfo = audioCtx.createOscillator();
+  lfo.frequency.value = 0.1;
+  const lfoGain = audioCtx.createGain();
+  lfoGain.gain.value = 5;
+  lfo.connect(lfoGain);
+  lfoGain.connect(ambientOsc.frequency);
+  lfo.start();
+
+  ambientOsc.connect(ambientGain);
+  ambientOsc.start();
+}
+
+function updateAmbient(x, y) {
+  if (!ambientOsc) return;
+  const reg = getRegion(x, y);
+  const freqs = { melodic: 55, rhythmic: 73.4, harmonic: 65.4, experimental: 46.2 };
+  ambientOsc.frequency.setTargetAtTime(freqs[reg.id] || 55, audioCtx.currentTime, 0.5);
+}
+
+// Pentatonic scale notes (in semitones from root)
+const PENTA = [0, 2, 4, 7, 9];
+const MAJOR = [0, 2, 4, 5, 7, 9, 11];
+const MINOR = [0, 2, 3, 5, 7, 8, 10];
+const CHROMATIC = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11];
+
+function midiToFreq(midi) { return 440 * Math.pow(2, (midi - 69) / 12); }
+
+function playCellSound(x, y) {
+  if (!audioCtx) initAudio();
+  const reg = getRegion(x, y);
+  const r1 = cellRand(x, y, 100);
+  const r2 = cellRand(x, y, 101);
+  const r3 = cellRand(x, y, 102);
+  const r4 = cellRand(x, y, 103);
+  const r5 = cellRand(x, y, 104);
+  const rare = isRareDiscovery(x, y);
+  const t = audioCtx.currentTime;
+
+  if (reg.id === 'melodic') playMelodicSound(x, y, r1, r2, r3, r4, r5, rare, t);
+  else if (reg.id === 'rhythmic') playRhythmicSound(x, y, r1, r2, r3, r4, r5, rare, t);
+  else if (reg.id === 'harmonic') playHarmonicSound(x, y, r1, r2, r3, r4, r5, rare, t);
+  else playExperimentalSound(x, y, r1, r2, r3, r4, r5, rare, t);
+}
+
+function playMelodicSound(x, y, r1, r2, r3, r4, r5, rare, t) {
+  const scale = PENTA;
+  const root = 60 + Math.floor(r1 * 12);
+  const noteCount = rare ? 5 : Math.floor(r2 * 3) + 1;
+  const waveTypes = ['sine', 'triangle'];
+  const wave = waveTypes[Math.floor(r3 * waveTypes.length)];
+
+  for (let i = 0; i < noteCount; i++) {
+    const degree = Math.floor(cellRand(x, y, 110 + i) * scale.length);
+    const octave = Math.floor(cellRand(x, y, 120 + i) * 2);
+    const midi = root + scale[degree] + octave * 12;
+    const freq = midiToFreq(midi);
+    const delay = i * (0.12 + r4 * 0.15);
+
+    const osc = audioCtx.createOscillator();
+    osc.type = wave;
+    osc.frequency.value = freq;
+
+    const gain = audioCtx.createGain();
+    gain.gain.setValueAtTime(0, t + delay);
+    gain.gain.linearRampToValueAtTime(0.15, t + delay + 0.04);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.6 + r5 * 0.8);
+
+    // Vibrato for rare
+    if (rare) {
+      const vib = audioCtx.createOscillator();
+      const vibG = audioCtx.createGain();
+      vib.frequency.value = 4 + r4 * 3;
+      vibG.gain.value = freq * 0.008;
+      vib.connect(vibG);
+      vibG.connect(osc.frequency);
+      vib.start(t + delay);
+      vib.stop(t + delay + 1.5);
+    }
+
+    osc.connect(gain);
+    gain.connect(masterGain);
+    osc.start(t + delay);
+    osc.stop(t + delay + 1.5);
+  }
+}
+
+function playRhythmicSound(x, y, r1, r2, r3, r4, r5, rare, t) {
+  const hitCount = rare ? 6 : Math.floor(r1 * 4) + 1;
+  for (let i = 0; i < hitCount; i++) {
+    const delay = i * (0.08 + r2 * 0.1);
+    const ri = cellRand(x, y, 130 + i);
+    const type = ri < 0.33 ? 'kick' : ri < 0.66 ? 'snare' : 'hat';
+
+    if (type === 'kick') {
+      const osc = audioCtx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(150 + r3 * 60, t + delay);
+      osc.frequency.exponentialRampToValueAtTime(40, t + delay + 0.15);
+      const g = audioCtx.createGain();
+      g.gain.setValueAtTime(0.3, t + delay);
+      g.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.25);
+      osc.connect(g); g.connect(masterGain);
+      osc.start(t + delay); osc.stop(t + delay + 0.3);
+    } else if (type === 'snare') {
+      const noise = createNoise(0.08);
+      const g = audioCtx.createGain();
+      g.gain.setValueAtTime(0.15, t + delay);
+      g.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.12);
+      const hp = audioCtx.createBiquadFilter();
+      hp.type = 'highpass';
+      hp.frequency.value = 2000 + r4 * 3000;
+      noise.connect(hp); hp.connect(g); g.connect(masterGain);
+      noise.start(t + delay); noise.stop(t + delay + 0.15);
+    } else {
+      const noise = createNoise(0.05);
+      const bp = audioCtx.createBiquadFilter();
+      bp.type = 'bandpass';
+      bp.frequency.value = 8000 + r5 * 4000;
+      bp.Q.value = 2;
+      const g = audioCtx.createGain();
+      g.gain.setValueAtTime(0.08, t + delay);
+      g.gain.exponentialRampToValueAtTime(0.001, t + delay + 0.04);
+      noise.connect(bp); bp.connect(g); g.connect(masterGain);
+      noise.start(t + delay); noise.stop(t + delay + 0.06);
+    }
+  }
+}
+
+function playHarmonicSound(x, y, r1, r2, r3, r4, r5, rare, t) {
+  const root = 48 + Math.floor(r1 * 12);
+  const chordTypes = [
+    [0, 4, 7],       // major
+    [0, 3, 7],       // minor
+    [0, 4, 7, 11],   // maj7
+    [0, 3, 7, 10],   // min7
+    [0, 4, 7, 10, 14], // dom9
+    [0, 5, 7],       // sus4
+  ];
+  const chord = chordTypes[Math.floor(r2 * chordTypes.length)];
+  const noteCount = rare ? chord.length + 1 : chord.length;
+  const wave = r3 < 0.5 ? 'sine' : 'triangle';
+  const duration = 1.2 + r4 * 1.5;
+
+  for (let i = 0; i < noteCount; i++) {
+    const semi = i < chord.length ? chord[i] : chord[0] + 12;
+    const freq = midiToFreq(root + semi);
+    const osc = audioCtx.createOscillator();
+    osc.type = wave;
+    osc.frequency.value = freq;
+
+    // Subtle detuning for richness
+    if (i > 0) osc.detune.value = (cellRand(x, y, 200 + i) - 0.5) * 8;
+
+    const g = audioCtx.createGain();
+    g.gain.setValueAtTime(0, t);
+    g.gain.linearRampToValueAtTime(0.08, t + 0.15);
+    g.gain.setValueAtTime(0.08, t + duration * 0.6);
+    g.gain.exponentialRampToValueAtTime(0.001, t + duration);
+
+    osc.connect(g);
+    g.connect(masterGain);
+    osc.start(t);
+    osc.stop(t + duration + 0.1);
+  }
+
+  // Add a filtered noise layer for pad texture
+  if (rare) {
+    const noise = createNoise(duration);
+    const lp = audioCtx.createBiquadFilter();
+    lp.type = 'lowpass';
+    lp.frequency.value = 600 + r5 * 400;
+    lp.Q.value = 1;
+    const ng = audioCtx.createGain();
+    ng.gain.setValueAtTime(0, t);
+    ng.gain.linearRampToValueAtTime(0.02, t + 0.3);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + duration);
+    noise.connect(lp); lp.connect(ng); ng.connect(masterGain);
+    noise.start(t); noise.stop(t + duration + 0.1);
+  }
+}
+
+function playExperimentalSound(x, y, r1, r2, r3, r4, r5, rare, t) {
+  // Detuned oscillator pair
+  const baseFreq = 80 + r1 * 400;
+  const detune = 10 + r2 * 50;
+  const duration = 0.5 + r3 * 1.2;
+
+  const osc1 = audioCtx.createOscillator();
+  const osc2 = audioCtx.createOscillator();
+  osc1.type = 'sawtooth';
+  osc2.type = 'square';
+  osc1.frequency.value = baseFreq;
+  osc2.frequency.value = baseFreq + detune;
+
+  // Ring modulation effect
+  const modOsc = audioCtx.createOscillator();
+  modOsc.frequency.value = r4 * 200 + 20;
+  const modGain = audioCtx.createGain();
+  modGain.gain.value = 0.5;
+
+  const g1 = audioCtx.createGain();
+  const g2 = audioCtx.createGain();
+  g1.gain.setValueAtTime(0, t);
+  g1.gain.linearRampToValueAtTime(0.1, t + 0.03);
+  g1.gain.exponentialRampToValueAtTime(0.001, t + duration);
+  g2.gain.setValueAtTime(0, t);
+  g2.gain.linearRampToValueAtTime(0.07, t + 0.05);
+  g2.gain.exponentialRampToValueAtTime(0.001, t + duration);
+
+  // Frequency sweep
+  osc1.frequency.setValueAtTime(baseFreq, t);
+  osc1.frequency.exponentialRampToValueAtTime(baseFreq * (0.5 + r5), t + duration);
+
+  osc1.connect(g1); g1.connect(masterGain);
+  osc2.connect(g2); g2.connect(masterGain);
+  modOsc.connect(modGain); modGain.connect(g1.gain);
+
+  osc1.start(t); osc2.start(t); modOsc.start(t);
+  osc1.stop(t + duration + 0.1);
+  osc2.stop(t + duration + 0.1);
+  modOsc.stop(t + duration + 0.1);
+
+  // Extra noise burst for rare
+  if (rare) {
+    const noise = createNoise(duration * 0.5);
+    const bp = audioCtx.createBiquadFilter();
+    bp.type = 'bandpass';
+    bp.frequency.value = baseFreq * 2;
+    bp.Q.value = 5;
+    const ng = audioCtx.createGain();
+    ng.gain.setValueAtTime(0.05, t);
+    ng.gain.exponentialRampToValueAtTime(0.001, t + duration * 0.5);
+    noise.connect(bp); bp.connect(ng); ng.connect(masterGain);
+    noise.start(t); noise.stop(t + duration * 0.5 + 0.1);
+  }
+}
+
+function createNoise(dur) {
+  const bufSize = audioCtx.sampleRate * Math.max(dur, 0.05);
+  const buf = audioCtx.createBuffer(1, bufSize, audioCtx.sampleRate);
+  const data = buf.getChannelData(0);
+  for (let i = 0; i < bufSize; i++) data[i] = Math.random() * 2 - 1;
+  const src = audioCtx.createBufferSource();
+  src.buffer = buf;
+  return src;
+}
+
+function playCombinedSound(indices) {
+  if (!audioCtx) initAudio();
+  const t = audioCtx.currentTime;
+  indices.forEach((idx, i) => {
+    const d = state.discoveries[idx];
+    if (d) {
+      setTimeout(() => playCellSound(d.x, d.y), i * 200);
+    }
+  });
+}
+
+// ============================================================
+// MAP RENDERING
+// ============================================================
+function drawMap() {
+  ctx.fillStyle = '#0a0a12';
+  ctx.fillRect(0, 0, MAP_W, MAP_H);
+
+  // Draw region background hints (very subtle)
+  for (let y = 0; y < GRID; y++) {
+    for (let x = 0; x < GRID; x++) {
+      const px = x * CELL, py = y * CELL;
+      const reg = getRegion(x, y);
+      const c = reg.color;
+      ctx.fillStyle = `rgba(${c[0]},${c[1]},${c[2]},0.03)`;
+      ctx.fillRect(px, py, CELL, CELL);
+    }
+  }
+
+  // Draw grid lines
+  ctx.strokeStyle = 'rgba(255,255,255,0.03)';
+  ctx.lineWidth = 0.5;
+  for (let i = 0; i <= GRID; i++) {
+    ctx.beginPath(); ctx.moveTo(i * CELL, 0); ctx.lineTo(i * CELL, MAP_H); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(0, i * CELL); ctx.lineTo(MAP_W, i * CELL); ctx.stroke();
+  }
+
+  // Region borders
+  const mid = GRID / 2;
+  ctx.strokeStyle = 'rgba(255,255,255,0.08)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath(); ctx.moveTo(mid * CELL, 0); ctx.lineTo(mid * CELL, MAP_H); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(0, mid * CELL); ctx.lineTo(MAP_W, mid * CELL); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Region labels
+  ctx.font = '10px sans-serif';
+  ctx.fillStyle = 'rgba(255,255,255,0.12)';
+  ctx.textAlign = 'center';
+  ctx.fillText('Melodic Plains', mid * CELL / 2, 16);
+  ctx.fillText('Rhythmic Caves', mid * CELL + mid * CELL / 2, 16);
+  ctx.fillText('Harmonic Forest', mid * CELL / 2, MAP_H - 6);
+  ctx.fillText('Experimental Void', mid * CELL + mid * CELL / 2, MAP_H - 6);
+
+  // Trail
+  if (state.trail.length > 1) {
+    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    const t0 = state.trail[0];
+    ctx.moveTo(t0.x * CELL + CELL / 2, t0.y * CELL + CELL / 2);
+    for (let i = 1; i < state.trail.length; i++) {
+      const tp = state.trail[i];
+      ctx.lineTo(tp.x * CELL + CELL / 2, tp.y * CELL + CELL / 2);
+    }
+    ctx.stroke();
+
+    // Trail dots
+    state.trail.forEach((tp, i) => {
+      const alpha = 0.03 + (i / state.trail.length) * 0.08;
+      ctx.fillStyle = `rgba(180,180,255,${alpha})`;
+      ctx.beginPath();
+      ctx.arc(tp.x * CELL + CELL / 2, tp.y * CELL + CELL / 2, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  }
+
+  // Explored cells
+  state.explored.forEach(key => {
+    const [x, y] = key.split(',').map(Number);
+    const px = x * CELL, py = y * CELL;
+    let alpha = 1;
+    if (state.revealAnimations[key] !== undefined) {
+      alpha = state.revealAnimations[key];
+    }
+    const color = getCellColor(x, y, alpha * 0.8);
+    ctx.fillStyle = color;
+    ctx.fillRect(px + 1, py + 1, CELL - 2, CELL - 2);
+
+    // Rare star
+    if (isRareDiscovery(x, y)) {
+      ctx.fillStyle = `rgba(247,199,74,${alpha})`;
+      ctx.font = '11px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('\u2605', px + CELL / 2, py + CELL / 2);
+    }
+
+    // Cell icon (small dot indicating type)
+    const reg = getRegion(x, y);
+    const icons = { melodic: '\u266A', rhythmic: '\u25CF', harmonic: '\u2261', experimental: '\u2234' };
+    if (!isRareDiscovery(x, y)) {
+      ctx.fillStyle = `rgba(255,255,255,${alpha * 0.3})`;
+      ctx.font = '8px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(icons[reg.id] || '.', px + CELL / 2, py + CELL / 2);
+    }
+  });
+
+  // Fog of war for unexplored
+  for (let y = 0; y < GRID; y++) {
+    for (let x = 0; x < GRID; x++) {
+      const key = `${x},${y}`;
+      if (!state.explored.has(key)) {
+        const px = x * CELL, py = y * CELL;
+        ctx.fillStyle = 'rgba(10,10,18,0.92)';
+        ctx.fillRect(px, py, CELL, CELL);
+        // Slight noise texture
+        if (cellRand(x, y, 300) > 0.85) {
+          ctx.fillStyle = 'rgba(255,255,255,0.015)';
+          ctx.fillRect(px + 4, py + 4, 2, 2);
+        }
+      }
+    }
+  }
+
+  // Hovered cell highlight
+  if (state.hoveredCell) {
+    const [hx, hy] = state.hoveredCell;
+    const key = `${hx},${hy}`;
+    if (state.explored.has(key)) {
+      ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+      ctx.lineWidth = 1.5;
+      ctx.strokeRect(hx * CELL + 0.5, hy * CELL + 0.5, CELL - 1, CELL - 1);
+    }
+  }
+
+  // Agent glow
+  const ax = state.agentX * CELL + CELL / 2;
+  const ay = state.agentY * CELL + CELL / 2;
+  const time = Date.now() / 1000;
+  const pulse = 0.6 + Math.sin(time * 3) * 0.4;
+
+  // Outer glow
+  const grad = ctx.createRadialGradient(ax, ay, 0, ax, ay, CELL * 1.5);
+  grad.addColorStop(0, `rgba(120,160,255,${0.15 * pulse})`);
+  grad.addColorStop(1, 'rgba(120,160,255,0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(ax - CELL * 1.5, ay - CELL * 1.5, CELL * 3, CELL * 3);
+
+  // Agent dot
+  ctx.fillStyle = `rgba(160,200,255,${0.8 + pulse * 0.2})`;
+  ctx.beginPath();
+  ctx.arc(ax, ay, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(ax, ay, 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Reveal radius indicator
+  ctx.strokeStyle = `rgba(120,160,255,${0.08 * pulse})`;
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.arc(ax, ay, CELL * 2, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+// ============================================================
+// WAVEFORM DISPLAY
+// ============================================================
+function drawWaveform() {
+  wfCtx.fillStyle = '#08080f';
+  wfCtx.fillRect(0, 0, 220, 80);
+
+  if (!analyser) return;
+  const bufLen = analyser.frequencyBinCount;
+  const data = new Uint8Array(bufLen);
+  analyser.getByteTimeDomainData(data);
+
+  wfCtx.strokeStyle = '#4a6cf7';
+  wfCtx.lineWidth = 1.5;
+  wfCtx.beginPath();
+  const sliceW = 220 / bufLen;
+  for (let i = 0; i < bufLen; i++) {
+    const v = data[i] / 128.0;
+    const yy = (v * 80) / 2;
+    if (i === 0) wfCtx.moveTo(0, yy);
+    else wfCtx.lineTo(i * sliceW, yy);
+  }
+  wfCtx.stroke();
+
+  // Frequency bars
+  const freqData = new Uint8Array(bufLen);
+  analyser.getByteFrequencyData(freqData);
+  const barW = 220 / 32;
+  for (let i = 0; i < 32; i++) {
+    const val = freqData[i * 2] / 255;
+    const h = val * 30;
+    wfCtx.fillStyle = `rgba(74,108,247,${val * 0.5})`;
+    wfCtx.fillRect(i * barW, 80 - h, barW - 1, h);
+  }
+}
+
+// ============================================================
+// EXPLORATION LOGIC
+// ============================================================
+function moveAgent(dx, dy) {
+  initAudio();
+  const nx = state.agentX + dx;
+  const ny = state.agentY + dy;
+  if (nx < 0 || nx >= GRID || ny < 0 || ny >= GRID) return;
+
+  state.agentX = nx;
+  state.agentY = ny;
+  state.trail.push({ x: nx, y: ny });
+  if (state.trail.length > 200) state.trail.shift();
+
+  const key = `${nx},${ny}`;
+  const wasExplored = state.explored.has(key);
+
+  // Reveal cells in a radius
+  for (let oy = -1; oy <= 1; oy++) {
+    for (let ox = -1; ox <= 1; ox++) {
+      const rx = nx + ox, ry = ny + oy;
+      if (rx >= 0 && rx < GRID && ry >= 0 && ry < GRID) {
+        const rk = `${rx},${ry}`;
+        if (!state.explored.has(rk)) {
+          state.explored.add(rk);
+          state.revealAnimations[rk] = 0;
+          addDiscovery(rx, ry);
+        }
+      }
+    }
+  }
+
+  // Play the current cell sound
+  playCellSound(nx, ny);
+  updateAmbient(nx, ny);
+
+  // Update UI
+  const reg = getRegion(nx, ny);
+  document.getElementById('currentRegion').textContent = reg.name;
+  document.getElementById('currentRegion').className = 'stat-value region-' + reg.id;
+  document.getElementById('currentCoords').textContent = `[${nx}, ${ny}]`;
+
+  if (wasExplored) {
+    addJournalRevisit(nx, ny);
+    setMode('listening');
+  } else {
+    setMode('exploring');
+  }
+
+  updateStats();
+  state.lastMoveTime = Date.now();
+}
+
+function addDiscovery(x, y) {
+  const existing = state.discoveries.find(d => d.x === x && d.y === y);
+  if (existing) return;
+
+  const reg = getRegion(x, y);
+  const desc = getCellDescription(x, y);
+  const novelty = getNoveltyScore(x, y);
+  const rare = isRareDiscovery(x, y);
+
+  const discovery = {
+    x, y,
+    region: reg.name,
+    regionId: reg.id,
+    description: desc,
+    novelty,
+    rare,
+    time: new Date(),
+    color: getCellColor(x, y, 1),
+  };
+  state.discoveries.push(discovery);
+  state.totalNovelty += novelty;
+
+  addJournalEntry(discovery);
+  addCollectionTile(state.discoveries.length - 1, discovery);
+}
+
+function addJournalEntry(d) {
+  const list = document.getElementById('journalList');
+  const el = document.createElement('div');
+  el.className = 'journal-entry' + (d.rare ? ' rare' : '');
+  const prefix = d.rare ? '\u2605 RARE DISCOVERY' : '\u25C6 Discovery';
+  const timeStr = d.time.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  el.innerHTML = `
+    <div class="je-header">
+      <span class="je-region region-${d.regionId}">${prefix}</span>
+      <span class="je-novelty">+${d.novelty}</span>
+    </div>
+    <div class="je-desc">[${d.x},${d.y}] ${d.region} &mdash; ${d.description}</div>
+    <div class="je-time">${timeStr}</div>
+  `;
+  list.prepend(el);
+  // Keep journal manageable
+  while (list.children.length > 100) list.removeChild(list.lastChild);
+}
+
+function addJournalRevisit(x, y) {
+  const reg = getRegion(x, y);
+  const desc = getCellDescription(x, y);
+  const list = document.getElementById('journalList');
+  const el = document.createElement('div');
+  el.className = 'journal-entry';
+  el.style.opacity = '0.5';
+  el.innerHTML = `
+    <div class="je-header">
+      <span class="je-region region-${reg.id}">\u27F3 Revisit</span>
+    </div>
+    <div class="je-desc">[${x},${y}] ${reg.name} &mdash; ${desc}</div>
+  `;
+  list.prepend(el);
+  while (list.children.length > 100) list.removeChild(list.lastChild);
+}
+
+function addCollectionTile(idx, d) {
+  const grid = document.getElementById('collectionGrid');
+  const tile = document.createElement('div');
+  tile.className = 'coll-tile';
+  tile.style.background = d.color;
+  tile.title = `[${d.x},${d.y}] ${d.description}`;
+  tile.dataset.idx = idx;
+
+  if (d.rare) {
+    tile.innerHTML = '\u2605';
+    tile.style.color = '#fff';
+    tile.style.fontSize = '14px';
+  }
+
+  tile.addEventListener('click', () => {
+    if (state.combineMode) {
+      tile.classList.toggle('selected');
+      const i = parseInt(tile.dataset.idx);
+      const si = state.combineSelected.indexOf(i);
+      if (si >= 0) state.combineSelected.splice(si, 1);
+      else if (state.combineSelected.length < 4) state.combineSelected.push(i);
+      if (state.combineSelected.length >= 2) {
+        playCombinedSound(state.combineSelected);
+        setMode('experimenting');
+      }
+    } else {
+      playCellSound(d.x, d.y);
+      document.getElementById('waveformInfo').textContent = `[${d.x},${d.y}] ${d.description}`;
+      setMode('listening');
+    }
+  });
+
+  tile.addEventListener('contextmenu', (e) => {
+    e.preventDefault();
+    const key = `${d.x},${d.y}`;
+    if (state.favorites.has(key)) {
+      state.favorites.delete(key);
+      tile.classList.remove('favorite');
+    } else {
+      state.favorites.add(key);
+      tile.classList.add('favorite');
+    }
+  });
+
+  grid.appendChild(tile);
+  document.getElementById('collCount').textContent = `${state.discoveries.length} sounds`;
+}
+
+function updateStats() {
+  const pct = Math.round((state.explored.size / (GRID * GRID)) * 100);
+  document.getElementById('coveragePct').textContent = pct + '%';
+  document.getElementById('coverageBar').style.width = pct + '%';
+  document.getElementById('uniqueCount').textContent = state.discoveries.length;
+  document.getElementById('rareCount').textContent = state.discoveries.filter(d => d.rare).length;
+  document.getElementById('noveltyScore').textContent = state.totalNovelty;
+}
+
+function setMode(m) {
+  state.mode = m;
+  const badge = document.getElementById('modeBadge');
+  badge.textContent = m.charAt(0).toUpperCase() + m.slice(1);
+  badge.className = 'mode-badge mode-' + m;
+}
+
+// ============================================================
+// AUTO EXPLORE
+// ============================================================
+let autoInterval = null;
+
+function toggleAutoExplore() {
+  state.autoExplore = !state.autoExplore;
+  document.getElementById('btnAutoExplore').classList.toggle('active', state.autoExplore);
+  if (state.autoExplore) {
+    if (autoInterval) clearInterval(autoInterval);
+    autoInterval = setInterval(autoStep, 600 - autoSpeed * 50);
+  } else {
+    clearInterval(autoInterval);
+    autoInterval = null;
+  }
+}
+
+function autoStep() {
+  if (!state.autoExplore) return;
+
+  // Find nearest unexplored cell using BFS
+  const target = findNearestUnexplored();
+  if (!target) {
+    state.autoExplore = false;
+    document.getElementById('btnAutoExplore').classList.remove('active');
+    clearInterval(autoInterval);
+    addSystemJournal('Exploration complete! All cells discovered.');
+    return;
+  }
+
+  // Move towards target
+  const dx = Math.sign(target.x - state.agentX);
+  const dy = Math.sign(target.y - state.agentY);
+
+  // Prefer moving in the direction with larger distance
+  if (Math.abs(target.x - state.agentX) > Math.abs(target.y - state.agentY)) {
+    if (dx !== 0) moveAgent(dx, 0);
+    else if (dy !== 0) moveAgent(0, dy);
+  } else {
+    if (dy !== 0) moveAgent(0, dy);
+    else if (dx !== 0) moveAgent(dx, 0);
+  }
+
+  // Update speed if changed
+  clearInterval(autoInterval);
+  autoInterval = setInterval(autoStep, 600 - autoSpeed * 50);
+
+  // Focus mode: pause on new rare discovery
+  if (state.focusMode) {
+    const key = `${state.agentX},${state.agentY}`;
+    if (isRareDiscovery(state.agentX, state.agentY)) {
+      state.autoExplore = false;
+      document.getElementById('btnAutoExplore').classList.remove('active');
+      clearInterval(autoInterval);
+      autoInterval = null;
+      addSystemJournal('Focus: Paused on rare discovery!');
+    }
+  }
+}
+
+function findNearestUnexplored() {
+  let best = null, bestDist = Infinity;
+  for (let y = 0; y < GRID; y++) {
+    for (let x = 0; x < GRID; x++) {
+      if (!state.explored.has(`${x},${y}`)) {
+        const dist = Math.abs(x - state.agentX) + Math.abs(y - state.agentY);
+        if (dist < bestDist) {
+          bestDist = dist;
+          best = { x, y };
+        }
+      }
+    }
+  }
+  return best;
+}
+
+function randomJump() {
+  initAudio();
+  const unexplored = [];
+  for (let y = 0; y < GRID; y++) {
+    for (let x = 0; x < GRID; x++) {
+      if (!state.explored.has(`${x},${y}`)) unexplored.push({ x, y });
+    }
+  }
+  if (unexplored.length === 0) {
+    addSystemJournal('No unexplored areas remain!');
+    return;
+  }
+  const target = unexplored[Math.floor(Math.random() * unexplored.length)];
+  state.agentX = target.x;
+  state.agentY = target.y;
+  state.trail.push({ x: target.x, y: target.y });
+
+  // Reveal around jump location
+  for (let oy = -1; oy <= 1; oy++) {
+    for (let ox = -1; ox <= 1; ox++) {
+      const rx = target.x + ox, ry = target.y + oy;
+      if (rx >= 0 && rx < GRID && ry >= 0 && ry < GRID) {
+        const rk = `${rx},${ry}`;
+        if (!state.explored.has(rk)) {
+          state.explored.add(rk);
+          state.revealAnimations[rk] = 0;
+          addDiscovery(rx, ry);
+        }
+      }
+    }
+  }
+
+  playCellSound(target.x, target.y);
+  updateAmbient(target.x, target.y);
+
+  const reg = getRegion(target.x, target.y);
+  document.getElementById('currentRegion').textContent = reg.name;
+  document.getElementById('currentRegion').className = 'stat-value region-' + reg.id;
+  document.getElementById('currentCoords').textContent = `[${target.x}, ${target.y}]`;
+  updateStats();
+
+  addSystemJournal(`Jumped to [${target.x}, ${target.y}] - ${reg.name}`);
+}
+
+function toggleFocusMode() {
+  state.focusMode = !state.focusMode;
+  document.getElementById('btnFocusMode').classList.toggle('active', state.focusMode);
+}
+
+function toggleCombineMode() {
+  state.combineMode = !state.combineMode;
+  document.getElementById('btnCombine').classList.toggle('active', state.combineMode);
+  state.combineSelected = [];
+  document.querySelectorAll('.coll-tile.selected').forEach(t => t.classList.remove('selected'));
+  if (state.combineMode) {
+    addSystemJournal('Combine mode: Select 2-4 tiles, then they play together.');
+    setMode('experimenting');
+  } else {
+    setMode('exploring');
+  }
+}
+
+function addSystemJournal(msg) {
+  const list = document.getElementById('journalList');
+  const el = document.createElement('div');
+  el.className = 'journal-entry';
+  el.style.borderLeftColor = '#4a6cf7';
+  el.innerHTML = `<div class="je-desc" style="color:#8ab4f8">\u25B6 ${msg}</div>`;
+  list.prepend(el);
+}
+
+function exportMap() {
+  let text = '=== SOUND EXPLORER MAP EXPORT ===\n\n';
+  text += `Coverage: ${Math.round((state.explored.size / (GRID * GRID)) * 100)}%\n`;
+  text += `Discoveries: ${state.discoveries.length} (${state.discoveries.filter(d => d.rare).length} rare)\n`;
+  text += `Novelty Score: ${state.totalNovelty}\n\n`;
+
+  const regions = {};
+  state.discoveries.forEach(d => {
+    if (!regions[d.region]) regions[d.region] = [];
+    regions[d.region].push(d);
+  });
+
+  for (const [region, discs] of Object.entries(regions)) {
+    text += `--- ${region} ---\n`;
+    discs.forEach(d => {
+      text += `  [${d.x},${d.y}] ${d.description} (novelty: ${d.novelty})${d.rare ? ' [RARE]' : ''}\n`;
+    });
+    text += '\n';
+  }
+
+  // Create download
+  const blob = new Blob([text], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'sound-explorer-map.txt';
+  a.click();
+  URL.revokeObjectURL(url);
+  addSystemJournal('Map exported!');
+}
+
+function resetExploration() {
+  if (!confirm('Reset all exploration progress?')) return;
+  state.explored.clear();
+  state.discoveries = [];
+  state.favorites.clear();
+  state.trail = [];
+  state.totalNovelty = 0;
+  state.revealAnimations = {};
+  state.combineSelected = [];
+  state.agentX = Math.floor(GRID / 2);
+  state.agentY = Math.floor(GRID / 2);
+  document.getElementById('journalList').innerHTML = '';
+  document.getElementById('collectionGrid').innerHTML = '';
+  document.getElementById('collCount').textContent = '0 sounds';
+  updateStats();
+  addSystemJournal('Exploration reset. Begin anew!');
+  // Reveal starting cell
+  moveAgent(0, 0);
+}
+
+// ============================================================
+// REVEAL ANIMATIONS
+// ============================================================
+function updateRevealAnimations() {
+  for (const key in state.revealAnimations) {
+    state.revealAnimations[key] += 0.04;
+    if (state.revealAnimations[key] >= 1) {
+      state.revealAnimations[key] = 1;
+      delete state.revealAnimations[key];
+    }
+  }
+}
+
+// ============================================================
+// INPUT HANDLING
+// ============================================================
+document.addEventListener('keydown', (e) => {
+  const k = e.key.toLowerCase();
+  if (k === 'arrowup' || k === 'w') { e.preventDefault(); moveAgent(0, -1); }
+  else if (k === 'arrowdown' || k === 's') { e.preventDefault(); moveAgent(0, 1); }
+  else if (k === 'arrowleft' || k === 'a') { e.preventDefault(); moveAgent(-1, 0); }
+  else if (k === 'arrowright' || k === 'd') { e.preventDefault(); moveAgent(1, 0); }
+  else if (k === ' ') { e.preventDefault(); toggleAutoExplore(); }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const cx = Math.floor(mx / CELL);
+  const cy = Math.floor(my / CELL);
+
+  if (cx >= 0 && cx < GRID && cy >= 0 && cy < GRID) {
+    state.hoveredCell = [cx, cy];
+    const key = `${cx},${cy}`;
+    const tooltip = document.getElementById('tooltip');
+    if (state.explored.has(key)) {
+      const reg = getRegion(cx, cy);
+      const desc = getCellDescription(cx, cy);
+      const rare = isRareDiscovery(cx, cy);
+      tooltip.innerHTML = `<div style="color:${rare ? '#f7c74a' : '#ddd'};font-weight:600">[${cx}, ${cy}]</div>
+        <div style="margin-top:2px" class="region-${reg.id}">${reg.name}</div>
+        <div style="margin-top:2px;color:#aab">${desc}</div>
+        ${rare ? '<div style="margin-top:2px;color:#f7c74a">\u2605 Rare Discovery</div>' : ''}`;
+      tooltip.style.opacity = '1';
+      tooltip.style.left = (e.clientX - canvas.parentElement.getBoundingClientRect().left + 12) + 'px';
+      tooltip.style.top = (e.clientY - canvas.parentElement.getBoundingClientRect().top - 10) + 'px';
+    } else {
+      tooltip.innerHTML = `<div style="color:#666">[${cx}, ${cy}] Unexplored</div>`;
+      tooltip.style.opacity = '0.7';
+      tooltip.style.left = (e.clientX - canvas.parentElement.getBoundingClientRect().left + 12) + 'px';
+      tooltip.style.top = (e.clientY - canvas.parentElement.getBoundingClientRect().top - 10) + 'px';
+    }
+  } else {
+    state.hoveredCell = null;
+    document.getElementById('tooltip').style.opacity = '0';
+  }
+});
+
+canvas.addEventListener('mouseleave', () => {
+  state.hoveredCell = null;
+  document.getElementById('tooltip').style.opacity = '0';
+});
+
+canvas.addEventListener('click', (e) => {
+  initAudio();
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const cx = Math.floor(mx / CELL);
+  const cy = Math.floor(my / CELL);
+
+  if (cx >= 0 && cx < GRID && cy >= 0 && cy < GRID) {
+    const key = `${cx},${cy}`;
+    if (state.explored.has(key)) {
+      playCellSound(cx, cy);
+      setMode('listening');
+      document.getElementById('waveformInfo').textContent = `[${cx},${cy}] ${getCellDescription(cx, cy)}`;
+    }
+  }
+});
+
+// ============================================================
+// MAIN LOOP
+// ============================================================
+function gameLoop() {
+  updateRevealAnimations();
+  drawMap();
+  drawWaveform();
+  requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+// INIT
+// ============================================================
+function init() {
+  addSystemJournal('Welcome to Sound Explorer! Use WASD or Arrow keys to move.');
+  addSystemJournal('Click explored cells to replay sounds. Right-click tiles to favorite.');
+  addSystemJournal('Press SPACE to toggle auto-explore.');
+
+  // Initial reveal
+  moveAgent(0, 0);
+  gameLoop();
+}
+
+init();
+</script>
+</body>
+</html>

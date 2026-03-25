@@ -1,0 +1,701 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Evolving Melody — Reflection Pattern</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: #0a0a12;
+    color: #e0dfe6;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 16px 40px;
+    overflow-x: hidden;
+  }
+
+  h1 {
+    font-size: 2.2rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #ff8a65, #ffd54f, #4dd0e1);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    margin-bottom: 4px;
+  }
+
+  .subtitle {
+    font-size: 0.95rem;
+    color: #8888aa;
+    margin-bottom: 6px;
+    font-style: italic;
+  }
+
+  .gen-counter {
+    font-size: 1.15rem;
+    color: #b0b0cc;
+    margin-bottom: 18px;
+    font-weight: 600;
+  }
+  .gen-counter span { color: #ffd54f; }
+
+  /* Fitness graph */
+  .fitness-section {
+    width: 100%;
+    max-width: 780px;
+    margin-bottom: 24px;
+  }
+  .fitness-label {
+    font-size: 0.85rem;
+    color: #7777aa;
+    margin-bottom: 6px;
+  }
+  #fitnessCanvas {
+    width: 100%;
+    height: 110px;
+    border-radius: 10px;
+    background: #12121e;
+    border: 1px solid #1e1e34;
+  }
+
+  /* Melody candidates */
+  .melodies-section {
+    width: 100%;
+    max-width: 780px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    margin-bottom: 28px;
+  }
+
+  .melody-row {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    background: #111120;
+    border-radius: 12px;
+    padding: 12px 16px;
+    border: 2px solid transparent;
+    transition: border-color 0.4s, box-shadow 0.4s;
+    position: relative;
+  }
+  .melody-row.best {
+    border-color: #ffd54f;
+    box-shadow: 0 0 24px rgba(255, 213, 79, 0.18), 0 0 6px rgba(255, 213, 79, 0.12);
+  }
+  .melody-row .rank {
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: #555;
+    width: 18px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+  .melody-row.best .rank { color: #ffd54f; }
+
+  .piano-roll-wrap {
+    flex: 1;
+    min-width: 0;
+  }
+  .piano-roll-canvas {
+    width: 100%;
+    height: 64px;
+    border-radius: 6px;
+    cursor: default;
+  }
+
+  .scores-wrap {
+    width: 130px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+  }
+  .score-bar-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .score-bar-label {
+    font-size: 0.65rem;
+    color: #8888aa;
+    width: 58px;
+    text-align: right;
+    flex-shrink: 0;
+  }
+  .score-bar-track {
+    flex: 1;
+    height: 8px;
+    background: #1a1a2e;
+    border-radius: 4px;
+    overflow: hidden;
+  }
+  .score-bar-fill {
+    height: 100%;
+    border-radius: 4px;
+    transition: width 0.5s ease;
+  }
+
+  .play-btn {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    border: none;
+    background: #1e1e34;
+    color: #ddd;
+    font-size: 0.9rem;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    transition: background 0.2s;
+  }
+  .play-btn:hover { background: #2e2e48; }
+  .play-btn.playing { background: #ffd54f33; color: #ffd54f; }
+
+  /* Controls */
+  .controls {
+    display: flex;
+    gap: 12px;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .btn {
+    padding: 10px 26px;
+    border: none;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: transform 0.12s, box-shadow 0.2s;
+  }
+  .btn:active { transform: scale(0.96); }
+
+  .btn-evolve {
+    background: linear-gradient(135deg, #ff8a65, #e65100);
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(255,138,101,0.3);
+  }
+  .btn-evolve:hover { box-shadow: 0 6px 22px rgba(255,138,101,0.45); }
+
+  .btn-auto {
+    background: #1e1e34;
+    color: #b0b0cc;
+    border: 1px solid #2a2a44;
+  }
+  .btn-auto.active {
+    background: #4dd0e133;
+    color: #4dd0e1;
+    border-color: #4dd0e1;
+  }
+
+  .btn-reset {
+    background: #1e1e34;
+    color: #b0b0cc;
+    border: 1px solid #2a2a44;
+  }
+  .btn-reset:hover { background: #2a2a44; }
+
+  .best-badge {
+    position: absolute;
+    top: -9px;
+    right: 16px;
+    background: #ffd54f;
+    color: #0a0a12;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 2px 10px;
+    border-radius: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+  }
+</style>
+</head>
+<body>
+
+<h1>Evolving Melody</h1>
+<p class="subtitle">Reflection Pattern &mdash; generate, critique, and iteratively refine</p>
+<p class="gen-counter">Generation <span id="genNum">1</span></p>
+
+<div class="fitness-section">
+  <div class="fitness-label">Best fitness over generations</div>
+  <canvas id="fitnessCanvas"></canvas>
+</div>
+
+<div class="melodies-section" id="melodiesSection"></div>
+
+<div class="controls">
+  <button class="btn btn-evolve" id="btnEvolve">Evolve</button>
+  <button class="btn btn-auto" id="btnAuto">Auto-evolve</button>
+  <button class="btn btn-reset" id="btnReset">Reset</button>
+</div>
+
+<script>
+// ───────── constants ─────────
+const NOTE_COUNT = 8;
+const POP_SIZE = 4;
+const PALETTE = [
+  { bg: '#ff8a65', fg: '#bf360c' },   // coral
+  { bg: '#ffd54f', fg: '#f57f17' },   // amber
+  { bg: '#4dd0e1', fg: '#00838f' },   // teal
+  { bg: '#ce93d8', fg: '#6a1b9a' },   // lavender
+];
+
+// Pentatonic-ish scale frequencies (C4 pentatonic extended)
+const SCALE = [
+  261.63, 293.66, 329.63, 392.00, 440.00,
+  523.25, 587.33, 659.25, 783.99, 880.00,
+  1046.50, 1174.66
+];
+const DURATIONS = [0.15, 0.2, 0.3, 0.4, 0.5]; // seconds
+
+// ───────── state ─────────
+let generation = 1;
+let population = [];   // array of 4 melodies
+let fitnessHistory = [];
+let autoInterval = null;
+let audioCtx = null;
+
+// ───────── melody structure ─────────
+function randomMelody() {
+  const notes = [];
+  for (let i = 0; i < NOTE_COUNT; i++) {
+    notes.push({
+      pitch: Math.floor(Math.random() * SCALE.length),
+      dur: Math.floor(Math.random() * DURATIONS.length),
+    });
+  }
+  return notes;
+}
+
+// ───────── critic / scoring ─────────
+function scoreConsonance(melody) {
+  // Reward small intervals (steps), penalise large leaps
+  let total = 0;
+  for (let i = 1; i < melody.length; i++) {
+    const interval = Math.abs(melody[i].pitch - melody[i - 1].pitch);
+    if (interval <= 1) total += 1.0;
+    else if (interval <= 2) total += 0.75;
+    else if (interval <= 3) total += 0.45;
+    else if (interval <= 4) total += 0.2;
+    else total += 0.0;
+  }
+  return total / (melody.length - 1);
+}
+
+function scoreContour(melody) {
+  // Reward a mix of ascending & descending motion + smooth arcs
+  let ups = 0, downs = 0, repeats = 0;
+  let smoothness = 0;
+  for (let i = 1; i < melody.length; i++) {
+    const diff = melody[i].pitch - melody[i - 1].pitch;
+    if (diff > 0) ups++;
+    else if (diff < 0) downs++;
+    else repeats++;
+    // Smoothness: small absolute change
+    smoothness += Math.max(0, 1 - Math.abs(diff) / 5);
+  }
+  const n = melody.length - 1;
+  const balance = 1 - Math.abs(ups - downs) / n; // 1 when balanced
+  const repeatPenalty = 1 - repeats / n;          // penalise monotone
+  return (balance * 0.35 + repeatPenalty * 0.25 + (smoothness / n) * 0.4);
+}
+
+function scoreRhythm(melody) {
+  // Reward variety of durations
+  const used = new Set(melody.map(n => n.dur));
+  const variety = used.size / DURATIONS.length;
+  // Also reward alternation
+  let changes = 0;
+  for (let i = 1; i < melody.length; i++) {
+    if (melody[i].dur !== melody[i - 1].dur) changes++;
+  }
+  const alternation = changes / (melody.length - 1);
+  return variety * 0.5 + alternation * 0.5;
+}
+
+function scoreMelody(melody) {
+  const c = scoreConsonance(melody);
+  const t = scoreContour(melody);
+  const r = scoreRhythm(melody);
+  return { consonance: c, contour: t, rhythm: r, total: (c + t + r) / 3 };
+}
+
+// ───────── mutation (reflection / refinement) ─────────
+function cloneMelody(m) { return m.map(n => ({ ...n })); }
+
+function mutate(melody) {
+  const child = cloneMelody(melody);
+  // Apply 1-3 mutations
+  const mutations = 1 + Math.floor(Math.random() * 3);
+  for (let m = 0; m < mutations; m++) {
+    const idx = Math.floor(Math.random() * NOTE_COUNT);
+    const kind = Math.random();
+    if (kind < 0.45) {
+      // Shift pitch by small step
+      const delta = Math.random() < 0.5 ? -1 : 1;
+      child[idx].pitch = Math.max(0, Math.min(SCALE.length - 1, child[idx].pitch + delta));
+    } else if (kind < 0.7) {
+      // Larger pitch shift
+      const delta = (Math.random() < 0.5 ? -1 : 1) * (1 + Math.floor(Math.random() * 2));
+      child[idx].pitch = Math.max(0, Math.min(SCALE.length - 1, child[idx].pitch + delta));
+    } else if (kind < 0.85) {
+      // Change duration
+      child[idx].dur = Math.floor(Math.random() * DURATIONS.length);
+    } else {
+      // Swap two adjacent notes
+      const j = Math.min(NOTE_COUNT - 1, idx + 1);
+      [child[idx], child[j]] = [child[j], child[idx]];
+    }
+  }
+  return child;
+}
+
+// ───────── audio playback ─────────
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function playMelody(melody, btnEl) {
+  ensureAudio();
+  let t = audioCtx.currentTime + 0.05;
+  melody.forEach(note => {
+    const dur = DURATIONS[note.dur];
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = SCALE[note.pitch];
+    gain.gain.setValueAtTime(0.18, t);
+    gain.gain.exponentialRampToValueAtTime(0.001, t + dur * 0.95);
+    osc.connect(gain).connect(audioCtx.destination);
+    osc.start(t);
+    osc.stop(t + dur);
+    t += dur;
+  });
+  // Animate button
+  if (btnEl) {
+    btnEl.classList.add('playing');
+    const totalDur = melody.reduce((s, n) => s + DURATIONS[n.dur], 0);
+    setTimeout(() => btnEl.classList.remove('playing'), totalDur * 1000 + 100);
+  }
+}
+
+// ───────── rendering: piano roll ─────────
+function drawPianoRoll(canvas, melody, color, isBest) {
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Background grid lines
+  ctx.strokeStyle = '#1a1a2e';
+  ctx.lineWidth = 0.5;
+  for (let y = 0; y < SCALE.length; y++) {
+    const py = H - (y / (SCALE.length - 1)) * (H - 8) - 4;
+    ctx.beginPath(); ctx.moveTo(0, py); ctx.lineTo(W, py); ctx.stroke();
+  }
+
+  // Total duration for x scaling
+  const totalDur = melody.reduce((s, n) => s + DURATIONS[n.dur], 0);
+  let xOff = 0;
+
+  melody.forEach((note, i) => {
+    const dur = DURATIONS[note.dur];
+    const x = (xOff / totalDur) * W;
+    const w = (dur / totalDur) * W - 2;
+    const y = H - ((note.pitch / (SCALE.length - 1)) * (H - 14)) - 10;
+    const h = 10;
+
+    // Rounded rectangle
+    const r = 3;
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+    ctx.lineTo(x + r, y + h);
+    ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+    ctx.lineTo(x, y + r);
+    ctx.quadraticCurveTo(x, y, x + r, y);
+    ctx.closePath();
+
+    ctx.fillStyle = color.bg;
+    ctx.globalAlpha = 0.85;
+    ctx.fill();
+    ctx.globalAlpha = 1;
+
+    if (isBest) {
+      ctx.shadowColor = '#ffd54f';
+      ctx.shadowBlur = 8;
+      ctx.fill();
+      ctx.shadowBlur = 0;
+    }
+
+    xOff += dur;
+  });
+
+  // Connecting line through note centres
+  ctx.beginPath();
+  ctx.strokeStyle = color.bg + '66';
+  ctx.lineWidth = 1.5;
+  xOff = 0;
+  melody.forEach((note, i) => {
+    const dur = DURATIONS[note.dur];
+    const cx = (xOff / totalDur) * W + ((dur / totalDur) * W - 2) / 2;
+    const cy = H - ((note.pitch / (SCALE.length - 1)) * (H - 14)) - 5;
+    if (i === 0) ctx.moveTo(cx, cy);
+    else ctx.lineTo(cx, cy);
+    xOff += dur;
+  });
+  ctx.stroke();
+}
+
+// ───────── rendering: fitness chart ─────────
+function drawFitnessChart() {
+  const canvas = document.getElementById('fitnessCanvas');
+  const dpr = window.devicePixelRatio || 1;
+  const rect = canvas.getBoundingClientRect();
+  canvas.width = rect.width * dpr;
+  canvas.height = rect.height * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  const W = rect.width, H = rect.height;
+  const pad = { t: 10, b: 20, l: 36, r: 14 };
+  const gw = W - pad.l - pad.r;
+  const gh = H - pad.t - pad.b;
+
+  ctx.clearRect(0, 0, W, H);
+
+  // Y axis labels
+  ctx.fillStyle = '#555568';
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'right';
+  for (let v = 0; v <= 1; v += 0.25) {
+    const y = pad.t + gh - v * gh;
+    ctx.fillText(v.toFixed(2), pad.l - 6, y + 3);
+    ctx.strokeStyle = '#1a1a2e';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(W - pad.r, y); ctx.stroke();
+  }
+
+  if (fitnessHistory.length < 2) {
+    if (fitnessHistory.length === 1) {
+      const y = pad.t + gh - fitnessHistory[0] * gh;
+      ctx.fillStyle = '#ffd54f';
+      ctx.beginPath(); ctx.arc(pad.l, y, 3, 0, Math.PI * 2); ctx.fill();
+    }
+    return;
+  }
+
+  const maxGens = Math.max(fitnessHistory.length, 10);
+  const stepX = gw / (maxGens - 1);
+
+  // Gradient fill
+  const grad = ctx.createLinearGradient(0, pad.t, 0, pad.t + gh);
+  grad.addColorStop(0, 'rgba(255,213,79,0.18)');
+  grad.addColorStop(1, 'rgba(255,213,79,0)');
+
+  ctx.beginPath();
+  ctx.moveTo(pad.l, pad.t + gh);
+  fitnessHistory.forEach((v, i) => {
+    ctx.lineTo(pad.l + i * stepX, pad.t + gh - v * gh);
+  });
+  ctx.lineTo(pad.l + (fitnessHistory.length - 1) * stepX, pad.t + gh);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Line
+  ctx.beginPath();
+  ctx.strokeStyle = '#ffd54f';
+  ctx.lineWidth = 2;
+  ctx.lineJoin = 'round';
+  fitnessHistory.forEach((v, i) => {
+    const x = pad.l + i * stepX;
+    const y = pad.t + gh - v * gh;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Dots
+  fitnessHistory.forEach((v, i) => {
+    const x = pad.l + i * stepX;
+    const y = pad.t + gh - v * gh;
+    ctx.fillStyle = '#ffd54f';
+    ctx.beginPath(); ctx.arc(x, y, 2.5, 0, Math.PI * 2); ctx.fill();
+  });
+
+  // X label
+  ctx.fillStyle = '#555568';
+  ctx.textAlign = 'center';
+  ctx.font = '9px system-ui';
+  ctx.fillText('Gen ' + fitnessHistory.length, pad.l + (fitnessHistory.length - 1) * stepX, H - 3);
+}
+
+// ───────── build UI rows ─────────
+function renderPopulation() {
+  const section = document.getElementById('melodiesSection');
+  section.innerHTML = '';
+
+  // Score all
+  const scored = population.map((mel, i) => ({ mel, idx: i, score: scoreMelody(mel) }));
+  scored.sort((a, b) => b.score.total - a.score.total);
+  const bestIdx = scored[0].idx;
+
+  population.forEach((mel, i) => {
+    const score = scoreMelody(mel);
+    const isBest = (i === bestIdx);
+    const color = PALETTE[i % PALETTE.length];
+
+    const row = document.createElement('div');
+    row.className = 'melody-row' + (isBest ? ' best' : '');
+
+    if (isBest) {
+      const badge = document.createElement('div');
+      badge.className = 'best-badge';
+      badge.textContent = 'Best';
+      row.appendChild(badge);
+    }
+
+    // Rank
+    const rank = document.createElement('div');
+    rank.className = 'rank';
+    rank.textContent = '#' + (i + 1);
+    row.appendChild(rank);
+
+    // Piano roll
+    const prWrap = document.createElement('div');
+    prWrap.className = 'piano-roll-wrap';
+    const canvas = document.createElement('canvas');
+    canvas.className = 'piano-roll-canvas';
+    prWrap.appendChild(canvas);
+    row.appendChild(prWrap);
+
+    // Score bars
+    const scoresWrap = document.createElement('div');
+    scoresWrap.className = 'scores-wrap';
+
+    const criteria = [
+      { label: 'Consonance', value: score.consonance, color: '#ff8a65' },
+      { label: 'Contour',    value: score.contour,    color: '#4dd0e1' },
+      { label: 'Rhythm',     value: score.rhythm,     color: '#ce93d8' },
+    ];
+
+    criteria.forEach(cr => {
+      const barRow = document.createElement('div');
+      barRow.className = 'score-bar-row';
+      const lbl = document.createElement('div');
+      lbl.className = 'score-bar-label';
+      lbl.textContent = cr.label;
+      const track = document.createElement('div');
+      track.className = 'score-bar-track';
+      const fill = document.createElement('div');
+      fill.className = 'score-bar-fill';
+      fill.style.width = (cr.value * 100).toFixed(1) + '%';
+      fill.style.background = cr.color;
+      track.appendChild(fill);
+      barRow.appendChild(lbl);
+      barRow.appendChild(track);
+      scoresWrap.appendChild(barRow);
+    });
+
+    row.appendChild(scoresWrap);
+
+    // Play button
+    const playBtn = document.createElement('button');
+    playBtn.className = 'play-btn';
+    playBtn.innerHTML = '&#9654;';
+    playBtn.addEventListener('click', () => playMelody(mel, playBtn));
+    row.appendChild(playBtn);
+
+    section.appendChild(row);
+
+    // Draw piano roll after appended (needs layout dimensions)
+    requestAnimationFrame(() => drawPianoRoll(canvas, mel, color, isBest));
+  });
+
+  // Update gen counter
+  document.getElementById('genNum').textContent = generation;
+}
+
+// ───────── evolution step ─────────
+function evolve() {
+  const scored = population.map((mel, i) => ({ mel, score: scoreMelody(mel) }));
+  scored.sort((a, b) => b.score.total - a.score.total);
+  const winner = scored[0];
+
+  // Record fitness
+  fitnessHistory.push(winner.score.total);
+
+  // Next generation: keep winner + 3 mutants
+  generation++;
+  population = [
+    cloneMelody(winner.mel),
+    mutate(winner.mel),
+    mutate(winner.mel),
+    mutate(winner.mel),
+  ];
+
+  renderPopulation();
+  drawFitnessChart();
+}
+
+// ───────── init ─────────
+function reset() {
+  generation = 1;
+  fitnessHistory = [];
+  population = Array.from({ length: POP_SIZE }, () => randomMelody());
+  // Record initial best
+  const scores = population.map(m => scoreMelody(m).total);
+  fitnessHistory.push(Math.max(...scores));
+  renderPopulation();
+  drawFitnessChart();
+  stopAuto();
+}
+
+function stopAuto() {
+  if (autoInterval) { clearInterval(autoInterval); autoInterval = null; }
+  document.getElementById('btnAuto').classList.remove('active');
+  document.getElementById('btnAuto').textContent = 'Auto-evolve';
+}
+
+document.getElementById('btnEvolve').addEventListener('click', evolve);
+
+document.getElementById('btnAuto').addEventListener('click', () => {
+  if (autoInterval) {
+    stopAuto();
+  } else {
+    autoInterval = setInterval(evolve, 2000);
+    document.getElementById('btnAuto').classList.add('active');
+    document.getElementById('btnAuto').textContent = 'Stop Auto';
+  }
+});
+
+document.getElementById('btnReset').addEventListener('click', reset);
+
+// Redraw on resize
+window.addEventListener('resize', () => {
+  renderPopulation();
+  drawFitnessChart();
+});
+
+// Start
+reset();
+</script>
+</body>
+</html>

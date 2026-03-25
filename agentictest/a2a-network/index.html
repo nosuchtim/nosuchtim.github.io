@@ -1,0 +1,1270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Network Symphony - A2A Inter-Agent Communication</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a12;color:#e0e0e0;font-family:'Segoe UI',system-ui,sans-serif;overflow:hidden;height:100vh;width:100vw}
+#app{display:flex;height:100vh;width:100vw}
+#canvas-area{flex:1;position:relative}
+canvas{display:block}
+#right-panel{width:340px;background:#0d0d1a;border-left:1px solid #1a1a3a;display:flex;flex-direction:column;overflow:hidden}
+.panel-section{padding:12px;border-bottom:1px solid #1a1a3a}
+.panel-title{font-size:11px;text-transform:uppercase;letter-spacing:1.5px;color:#556;margin-bottom:8px;font-weight:600}
+#protocol-log{flex:1;overflow-y:auto;padding:8px;font-family:'Cascadia Code','Fira Code',monospace;font-size:10.5px;line-height:1.6}
+#protocol-log::-webkit-scrollbar{width:4px}
+#protocol-log::-webkit-scrollbar-thumb{background:#2a2a4a;border-radius:2px}
+.log-entry{padding:4px 6px;margin:2px 0;border-radius:4px;background:#0a0a16;border-left:3px solid #333;word-break:break-all}
+.log-entry.DISCOVER{border-left-color:#4a9eff}
+.log-entry.CAPABILITY_REQUEST{border-left-color:#4ade80}
+.log-entry.CAPABILITY_RESPONSE{border-left-color:#4ade80}
+.log-entry.TASK_DELEGATE{border-left-color:#facc15}
+.log-entry.MUSIC_DATA{border-left-color:#e879f9}
+.log-entry.ACK{border-left-color:#888}
+.log-entry.ENSEMBLE_INVITE{border-left-color:#f97316}
+.log-entry.TEMPO_CHANGE{border-left-color:#22d3ee}
+.log-entry.KEY_CHANGE{border-left-color:#a78bfa}
+.log-key{color:#888}.log-str{color:#4ade80}.log-num{color:#facc15}.log-type{font-weight:700}
+.type-DISCOVER .log-type{color:#4a9eff}
+.type-CAPABILITY_REQUEST .log-type,.type-CAPABILITY_RESPONSE .log-type{color:#4ade80}
+.type-TASK_DELEGATE .log-type{color:#facc15}
+.type-MUSIC_DATA .log-type{color:#e879f9}
+.type-ACK .log-type{color:#888}
+.type-ENSEMBLE_INVITE .log-type{color:#f97316}
+.type-TEMPO_CHANGE .log-type{color:#22d3ee}
+.type-KEY_CHANGE .log-type{color:#a78bfa}
+#controls{position:absolute;top:16px;left:16px;display:flex;gap:8px;align-items:center;z-index:10;flex-wrap:wrap;max-width:500px}
+button{background:#1a1a3a;color:#ccc;border:1px solid #2a2a5a;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:12px;font-family:inherit;transition:all .2s}
+button:hover{background:#2a2a5a;color:#fff;border-color:#4a4a8a}
+button.active{background:#3a2a6a;border-color:#7a5af5;color:#fff}
+button:disabled{opacity:.4;cursor:default}
+.ctrl-group{display:flex;align-items:center;gap:6px;background:#0d0d1a80;padding:4px 10px;border-radius:6px;backdrop-filter:blur(8px);border:1px solid #1a1a3a}
+.ctrl-group label{font-size:11px;color:#889}
+.ctrl-group select,.ctrl-group input[type=range]{background:#1a1a3a;color:#ccc;border:1px solid #2a2a5a;border-radius:4px;padding:2px 6px;font-size:11px}
+.ctrl-group input[type=range]{width:80px;accent-color:#7a5af5}
+#stats{position:absolute;bottom:16px;left:16px;display:flex;gap:16px;z-index:10}
+.stat-box{background:#0d0d1a90;backdrop-filter:blur(8px);border:1px solid #1a1a3a;padding:8px 14px;border-radius:6px}
+.stat-label{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:#556}.stat-value{font-size:18px;font-weight:700;color:#7a5af5;font-family:'Cascadia Code',monospace}
+#phase-indicator{position:absolute;top:16px;right:360px;background:#0d0d1a90;backdrop-filter:blur(8px);border:1px solid #1a1a3a;padding:8px 18px;border-radius:6px;z-index:10}
+#phase-indicator .phase-name{font-size:14px;font-weight:700;letter-spacing:2px}
+#phase-indicator .phase-sub{font-size:10px;color:#667;margin-top:2px}
+.phase-DISCOVERY .phase-name{color:#4a9eff}
+.phase-NEGOTIATION .phase-name{color:#f97316}
+.phase-PERFORMANCE .phase-name{color:#e879f9}
+.phase-IDLE .phase-name{color:#556}
+#agent-card-modal{display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#12122a;border:1px solid #2a2a5a;border-radius:12px;padding:24px;z-index:100;min-width:340px;box-shadow:0 20px 60px #000a}
+#agent-card-modal.show{display:block}
+#agent-card-modal h3{margin-bottom:12px;color:#7a5af5}
+#agent-card-modal .card-row{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px solid #1a1a3a;font-size:12px}
+#agent-card-modal .card-label{color:#667}
+#agent-card-modal .card-val{color:#ddd}
+#agent-card-modal .badge-list{display:flex;gap:4px;flex-wrap:wrap;margin-top:8px}
+#agent-card-modal .badge{background:#1a1a3a;padding:2px 8px;border-radius:10px;font-size:10px;border:1px solid #2a2a5a}
+#agent-card-modal .close-btn{position:absolute;top:8px;right:12px;background:none;border:none;color:#667;font-size:18px;cursor:pointer}
+#edge-modal{display:none;position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);background:#12122a;border:1px solid #2a2a5a;border-radius:12px;padding:24px;z-index:100;min-width:380px;max-height:400px;overflow-y:auto;box-shadow:0 20px 60px #000a}
+#edge-modal.show{display:block}
+#edge-modal h3{margin-bottom:12px;color:#f97316}
+#edge-modal .close-btn{position:absolute;top:8px;right:12px;background:none;border:none;color:#667;font-size:18px;cursor:pointer}
+#edge-modal .edge-msg{font-family:monospace;font-size:10px;padding:4px;margin:2px 0;border-radius:3px;background:#0a0a16}
+#overlay{display:none;position:fixed;inset:0;background:#000000aa;z-index:99}
+#overlay.show{display:block}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="canvas-area">
+    <canvas id="c"></canvas>
+    <div id="controls">
+      <button id="btn-boot" onclick="bootNetwork()">Boot Network</button>
+      <button id="btn-broadcast" onclick="broadcast()" disabled>Broadcast</button>
+      <button id="btn-reset" onclick="resetNetwork()">Reset</button>
+      <div class="ctrl-group">
+        <label>Tempo</label>
+        <input type="range" id="tempo-slider" min="60" max="180" value="120" oninput="changeTempo(this.value)">
+        <span id="tempo-val">120</span>
+      </div>
+      <div class="ctrl-group">
+        <label>Key</label>
+        <select id="key-select" onchange="changeKey(this.value)">
+          <option value="C">C Major</option><option value="Dm">D Minor</option><option value="G">G Major</option>
+          <option value="Am">A Minor</option><option value="F">F Major</option><option value="Em">E Minor</option>
+          <option value="Bb">Bb Major</option><option value="Cm">C Minor</option>
+        </select>
+      </div>
+    </div>
+    <div id="phase-indicator" class="phase-IDLE">
+      <div class="phase-name">IDLE</div>
+      <div class="phase-sub">Press "Boot Network" to begin</div>
+    </div>
+    <div id="stats">
+      <div class="stat-box"><div class="stat-label">Messages</div><div class="stat-value" id="stat-msgs">0</div></div>
+      <div class="stat-box"><div class="stat-label">Connections</div><div class="stat-value" id="stat-conns">0</div></div>
+      <div class="stat-box"><div class="stat-label">Avg Latency</div><div class="stat-value" id="stat-latency">0<span style="font-size:10px;color:#667">ms</span></div></div>
+      <div class="stat-box"><div class="stat-label">Ensembles</div><div class="stat-value" id="stat-ensembles">0</div></div>
+    </div>
+    <div id="overlay" onclick="closeModals()"></div>
+    <div id="agent-card-modal"><button class="close-btn" onclick="closeModals()">&times;</button><div id="card-content"></div></div>
+    <div id="edge-modal"><button class="close-btn" onclick="closeModals()">&times;</button><div id="edge-content"></div></div>
+  </div>
+  <div id="right-panel">
+    <div class="panel-section">
+      <div class="panel-title">Protocol Inspector</div>
+      <div style="display:flex;gap:4px;flex-wrap:wrap;margin-top:4px">
+        <span style="font-size:9px;padding:2px 6px;border-radius:8px;background:#4a9eff30;color:#4a9eff;border:1px solid #4a9eff50">DISCOVER</span>
+        <span style="font-size:9px;padding:2px 6px;border-radius:8px;background:#4ade8030;color:#4ade80;border:1px solid #4ade8050">CAPABILITY</span>
+        <span style="font-size:9px;padding:2px 6px;border-radius:8px;background:#facc1530;color:#facc15;border:1px solid #facc1550">DELEGATE</span>
+        <span style="font-size:9px;padding:2px 6px;border-radius:8px;background:#e879f930;color:#e879f9;border:1px solid #e879f950">MUSIC</span>
+        <span style="font-size:9px;padding:2px 6px;border-radius:8px;background:#88888830;color:#888;border:1px solid #88888850">ACK</span>
+        <span style="font-size:9px;padding:2px 6px;border-radius:8px;background:#f9731630;color:#f97316;border:1px solid #f9731650">ENSEMBLE</span>
+      </div>
+    </div>
+    <div id="protocol-log"></div>
+  </div>
+</div>
+<script>
+// ===================== CONSTANTS & CONFIG =====================
+const AGENT_DEFS = [
+  {name:"Piano",framework:"LangChain",color:"#4a9eff",instrument:"triangle-chord",caps:["harmony","chords","melody","accompaniment"],protocols:["A2A/1.0","MusicML"]},
+  {name:"Strings",framework:"CrewAI",color:"#4ade80",instrument:"filtered-saw",caps:["sustain","harmony","melody","tremolo"],protocols:["A2A/1.0","MIDI-Bridge"]},
+  {name:"Bass",framework:"Google ADK",color:"#f97316",instrument:"low-sine",caps:["bass-line","rhythm","foundation","groove"],protocols:["A2A/1.0","MusicML"]},
+  {name:"Drums",framework:"AutoGen",color:"#ef4444",instrument:"noise-kick",caps:["rhythm","percussion","fills","tempo-keep"],protocols:["A2A/1.0","BeatSync"]},
+  {name:"Flute",framework:"LangGraph",color:"#22d3ee",instrument:"sine-vibrato",caps:["melody","ornament","counter-melody","trill"],protocols:["A2A/1.0","MusicML"]},
+  {name:"SynthPad",framework:"OpenAI Swarm",color:"#a78bfa",instrument:"detuned-osc",caps:["atmosphere","pad","drone","texture"],protocols:["A2A/1.0","SynthProto"]},
+  {name:"Marimba",framework:"Semantic Kernel",color:"#facc15",instrument:"short-ping",caps:["rhythm","melody","arpeggios","staccato"],protocols:["A2A/1.0","MusicML"]},
+  {name:"Choir",framework:"Custom",color:"#e879f9",instrument:"filtered-harmonics",caps:["harmony","sustained","vowel-shift","choral"],protocols:["A2A/1.0","VocalNet"]}
+];
+
+const MSG_COLORS = {
+  DISCOVER:"#4a9eff",CAPABILITY_REQUEST:"#4ade80",CAPABILITY_RESPONSE:"#4ade80",
+  TASK_DELEGATE:"#facc15",MUSIC_DATA:"#e879f9",ACK:"#888888",
+  ENSEMBLE_INVITE:"#f97316",ENSEMBLE_ACCEPT:"#f97316",
+  TEMPO_CHANGE:"#22d3ee",KEY_CHANGE:"#a78bfa"
+};
+
+const KEYS = {
+  C:[261.63,293.66,329.63,349.23,392,440,493.88],
+  Dm:[293.66,329.63,349.23,392,440,466.16,523.25],
+  G:[392,440,493.88,523.25,587.33,659.25,739.99],
+  Am:[440,493.88,523.25,587.33,659.25,698.46,783.99],
+  F:[349.23,392,440,466.16,523.25,587.33,659.25],
+  Em:[329.63,369.99,392,440,493.88,523.25,587.33],
+  Bb:[466.16,523.25,587.33,622.25,698.46,783.99,880],
+  Cm:[523.25,587.33,622.25,698.46,783.99,830.61,932.33]
+};
+
+let currentKey = "C";
+let tempo = 120;
+let phase = "IDLE"; // IDLE, DISCOVERY, NEGOTIATION, PERFORMANCE
+let audioCtx = null;
+let masterGain = null;
+let totalMessages = 0;
+let running = false;
+let animFrame = null;
+let beatTimer = null;
+let beatCount = 0;
+
+// ===================== AGENT STATE =====================
+class Agent {
+  constructor(def, index) {
+    Object.assign(this, def);
+    this.id = index;
+    const angle = (index / 8) * Math.PI * 2 - Math.PI / 2;
+    const cx = window.innerWidth / 2 - 170;
+    const cy = window.innerHeight / 2;
+    const r = Math.min(cx, cy) * 0.55;
+    this.x = cx + Math.cos(angle) * r;
+    this.y = cy + Math.sin(angle) * r;
+    this.targetX = this.x;
+    this.targetY = this.y;
+    this.radius = 52;
+    this.status = "idle"; // idle, discovering, communicating, playing
+    this.connections = new Set();
+    this.discovered = new Set();
+    this.capabilities = new Map();
+    this.ensemble = null;
+    this.waveform = new Float32Array(64);
+    this.wavePhase = 0;
+    this.glowIntensity = 0;
+    this.statusTimer = 0;
+    this.dragging = false;
+    this.lastPlayTime = 0;
+    this.analyser = null;
+  }
+}
+
+let agents = [];
+let edges = []; // {from,to,active,messages:[],formed:false}
+let packets = []; // animated message packets
+let ensembles = []; // [{agents:[], color:}]
+let messageLog = []; // for edge modal
+let edgeMessageMap = {}; // "i-j" -> [{msg}]
+
+// ===================== CANVAS SETUP =====================
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+function resize() {
+  const area = document.getElementById('canvas-area');
+  canvas.width = area.clientWidth;
+  canvas.height = area.clientHeight;
+  // Recompute agent positions
+  const cx = canvas.width / 2;
+  const cy = canvas.height / 2;
+  const r = Math.min(cx, cy) * 0.55;
+  agents.forEach((a, i) => {
+    if (!a.dragging) {
+      const angle = (i / 8) * Math.PI * 2 - Math.PI / 2;
+      a.targetX = cx + Math.cos(angle) * r;
+      a.targetY = cy + Math.sin(angle) * r;
+    }
+  });
+}
+window.addEventListener('resize', resize);
+
+// ===================== INIT =====================
+function initAgents() {
+  agents = AGENT_DEFS.map((d, i) => new Agent(d, i));
+  edges = [];
+  packets = [];
+  ensembles = [];
+  messageLog = [];
+  edgeMessageMap = {};
+  totalMessages = 0;
+  beatCount = 0;
+  phase = "IDLE";
+  updatePhaseUI();
+  updateStats();
+  resize();
+}
+
+// ===================== AUDIO =====================
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0.35;
+  masterGain.connect(audioCtx.destination);
+  // Create analysers for each agent
+  agents.forEach(a => {
+    a.analyser = audioCtx.createAnalyser();
+    a.analyser.fftSize = 128;
+    a.analyser.connect(masterGain);
+  });
+}
+
+function playInstrument(agent, noteFreq, duration = 0.3, velocity = 0.6) {
+  if (!audioCtx) return;
+  const now = audioCtx.currentTime;
+  const out = agent.analyser;
+
+  switch(agent.instrument) {
+    case "triangle-chord": {
+      // Piano: triangle wave chord
+      const freqs = [noteFreq, noteFreq * 1.25, noteFreq * 1.5];
+      freqs.forEach(f => {
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = "triangle";
+        osc.frequency.value = f;
+        g.gain.setValueAtTime(velocity * 0.25, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + duration * 1.5);
+        osc.connect(g);
+        g.connect(out);
+        osc.start(now);
+        osc.stop(now + duration * 1.5);
+      });
+      break;
+    }
+    case "filtered-saw": {
+      // Strings: sustained filtered saw
+      const osc = audioCtx.createOscillator();
+      const filter = audioCtx.createBiquadFilter();
+      const g = audioCtx.createGain();
+      osc.type = "sawtooth";
+      osc.frequency.value = noteFreq;
+      filter.type = "lowpass";
+      filter.frequency.value = 1200;
+      filter.Q.value = 2;
+      g.gain.setValueAtTime(0, now);
+      g.gain.linearRampToValueAtTime(velocity * 0.3, now + 0.08);
+      g.gain.linearRampToValueAtTime(velocity * 0.2, now + duration * 0.7);
+      g.gain.exponentialRampToValueAtTime(0.001, now + duration);
+      osc.connect(filter);
+      filter.connect(g);
+      g.connect(out);
+      osc.start(now);
+      osc.stop(now + duration + 0.1);
+      break;
+    }
+    case "low-sine": {
+      // Bass: low sine + triangle
+      const osc1 = audioCtx.createOscillator();
+      const osc2 = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      osc1.type = "sine";
+      osc1.frequency.value = noteFreq / 2;
+      osc2.type = "triangle";
+      osc2.frequency.value = noteFreq / 2;
+      g.gain.setValueAtTime(velocity * 0.4, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + duration);
+      osc1.connect(g);
+      osc2.connect(g);
+      g.connect(out);
+      osc1.start(now);
+      osc2.start(now);
+      osc1.stop(now + duration);
+      osc2.stop(now + duration);
+      break;
+    }
+    case "noise-kick": {
+      // Drums: noise burst + sine kick
+      const bufferSize = audioCtx.sampleRate * 0.08;
+      const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
+      const data = buffer.getChannelData(0);
+      for (let i = 0; i < bufferSize; i++) data[i] = (Math.random() * 2 - 1) * (1 - i / bufferSize);
+      const noise = audioCtx.createBufferSource();
+      noise.buffer = buffer;
+      const ng = audioCtx.createGain();
+      ng.gain.setValueAtTime(velocity * 0.3, now);
+      ng.gain.exponentialRampToValueAtTime(0.001, now + 0.08);
+      const hpf = audioCtx.createBiquadFilter();
+      hpf.type = "highpass";
+      hpf.frequency.value = noteFreq > 200 ? 4000 : 60;
+      noise.connect(hpf);
+      hpf.connect(ng);
+      ng.connect(out);
+      noise.start(now);
+      // Sine kick
+      const kick = audioCtx.createOscillator();
+      const kg = audioCtx.createGain();
+      kick.type = "sine";
+      kick.frequency.setValueAtTime(noteFreq > 200 ? 800 : 120, now);
+      kick.frequency.exponentialRampToValueAtTime(40, now + 0.12);
+      kg.gain.setValueAtTime(velocity * 0.5, now);
+      kg.gain.exponentialRampToValueAtTime(0.001, now + 0.15);
+      kick.connect(kg);
+      kg.connect(out);
+      kick.start(now);
+      kick.stop(now + 0.2);
+      break;
+    }
+    case "sine-vibrato": {
+      // Flute: sine with vibrato
+      const osc = audioCtx.createOscillator();
+      const vibLFO = audioCtx.createOscillator();
+      const vibGain = audioCtx.createGain();
+      const g = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = noteFreq;
+      vibLFO.type = "sine";
+      vibLFO.frequency.value = 5.5;
+      vibGain.gain.value = 4;
+      vibLFO.connect(vibGain);
+      vibGain.connect(osc.frequency);
+      g.gain.setValueAtTime(0, now);
+      g.gain.linearRampToValueAtTime(velocity * 0.25, now + 0.06);
+      g.gain.setValueAtTime(velocity * 0.25, now + duration * 0.6);
+      g.gain.exponentialRampToValueAtTime(0.001, now + duration);
+      osc.connect(g);
+      g.connect(out);
+      osc.start(now);
+      vibLFO.start(now);
+      osc.stop(now + duration + 0.05);
+      vibLFO.stop(now + duration + 0.05);
+      break;
+    }
+    case "detuned-osc": {
+      // Synth Pad: detuned oscillators
+      [-3, 0, 3, 7].forEach(detune => {
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = noteFreq;
+        osc.detune.value = detune * 8;
+        g.gain.setValueAtTime(0, now);
+        g.gain.linearRampToValueAtTime(velocity * 0.1, now + 0.15);
+        g.gain.setValueAtTime(velocity * 0.1, now + duration * 0.7);
+        g.gain.exponentialRampToValueAtTime(0.001, now + duration);
+        osc.connect(g);
+        g.connect(out);
+        osc.start(now);
+        osc.stop(now + duration + 0.1);
+      });
+      break;
+    }
+    case "short-ping": {
+      // Marimba: short sine pings
+      const osc = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      osc.type = "sine";
+      osc.frequency.value = noteFreq;
+      g.gain.setValueAtTime(velocity * 0.4, now);
+      g.gain.exponentialRampToValueAtTime(0.001, now + 0.18);
+      osc.connect(g);
+      g.connect(out);
+      osc.start(now);
+      osc.stop(now + 0.25);
+      break;
+    }
+    case "filtered-harmonics": {
+      // Choir: filtered harmonics
+      const filter = audioCtx.createBiquadFilter();
+      filter.type = "bandpass";
+      filter.frequency.value = 1500;
+      filter.Q.value = 4;
+      const lfo = audioCtx.createOscillator();
+      const lfoG = audioCtx.createGain();
+      lfo.frequency.value = 0.8;
+      lfoG.gain.value = 400;
+      lfo.connect(lfoG);
+      lfoG.connect(filter.frequency);
+      [1, 2, 3, 4].forEach(h => {
+        const osc = audioCtx.createOscillator();
+        const g = audioCtx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = noteFreq * h;
+        g.gain.setValueAtTime(0, now);
+        g.gain.linearRampToValueAtTime(velocity * 0.12 / h, now + 0.12);
+        g.gain.setValueAtTime(velocity * 0.1 / h, now + duration * 0.7);
+        g.gain.exponentialRampToValueAtTime(0.001, now + duration);
+        osc.connect(filter);
+        osc.start(now);
+        osc.stop(now + duration + 0.1);
+      });
+      const fg = audioCtx.createGain();
+      fg.gain.value = 1;
+      filter.connect(fg);
+      fg.connect(out);
+      lfo.start(now);
+      lfo.stop(now + duration + 0.1);
+      break;
+    }
+  }
+
+  agent.lastPlayTime = Date.now();
+  agent.glowIntensity = 1;
+  setAgentStatus(agent, "playing", 800);
+}
+
+// ===================== A2A MESSAGING =====================
+function sendMessage(from, to, type, payload = {}) {
+  totalMessages++;
+  const msg = {
+    id: totalMessages,
+    from: agents[from].name,
+    to: agents[to].name,
+    fromId: from,
+    toId: to,
+    type,
+    payload,
+    timestamp: Date.now()
+  };
+
+  // Store in edge map
+  const ek = edgeKey(from, to);
+  if (!edgeMessageMap[ek]) edgeMessageMap[ek] = [];
+  edgeMessageMap[ek].push(msg);
+
+  // Animated packet
+  packets.push({
+    fromId: from, toId: to, type, progress: 0,
+    speed: 0.012 + Math.random() * 0.008,
+    payload, color: MSG_COLORS[type] || "#fff"
+  });
+
+  // Log to protocol inspector
+  addLogEntry(msg);
+  updateStats();
+
+  return msg;
+}
+
+function edgeKey(a, b) { return Math.min(a, b) + "-" + Math.max(a, b); }
+
+function addLogEntry(msg) {
+  const logEl = document.getElementById('protocol-log');
+  const div = document.createElement('div');
+  div.className = `log-entry ${msg.type} type-${msg.type}`;
+  const payloadStr = Object.entries(msg.payload).map(([k, v]) => {
+    const vs = typeof v === "string" ? `<span class="log-str">"${v}"</span>` :
+               typeof v === "number" ? `<span class="log-num">${v}</span>` :
+               Array.isArray(v) ? `[${v.map(x => `<span class="log-str">"${x}"</span>`).join(",")}]` :
+               JSON.stringify(v);
+    return `<span class="log-key">${k}</span>: ${vs}`;
+  }).join(", ");
+  div.innerHTML = `{<span class="log-key">from</span>: <span class="log-str">"${msg.from}"</span>, <span class="log-key">to</span>: <span class="log-str">"${msg.to}"</span>, <span class="log-key">type</span>: <span class="log-type">"${msg.type}"</span>${payloadStr ? ", " + payloadStr : ""}}`;
+  logEl.appendChild(div);
+  logEl.scrollTop = logEl.scrollHeight;
+  // Keep max 200 entries
+  while (logEl.children.length > 200) logEl.removeChild(logEl.firstChild);
+}
+
+function setAgentStatus(agent, status, duration = 1000) {
+  agent.status = status;
+  agent.statusTimer = Date.now() + duration;
+}
+
+// ===================== EDGE MANAGEMENT =====================
+function addEdge(a, b) {
+  const ek = edgeKey(a, b);
+  if (edges.find(e => edgeKey(e.from, e.to) === ek)) return;
+  edges.push({ from: a, to: b, active: true, formProgress: 0 });
+  agents[a].connections.add(b);
+  agents[b].connections.add(a);
+  updateStats();
+}
+
+// ===================== PHASES =====================
+function updatePhaseUI() {
+  const el = document.getElementById('phase-indicator');
+  el.className = `phase-${phase}`;
+  const subs = {
+    IDLE: "Press \"Boot Network\" to begin",
+    DISCOVERY: "Agents broadcasting Agent Cards...",
+    NEGOTIATION: "Exchanging capabilities, forming ensembles...",
+    PERFORMANCE: "Collaborative composition in progress"
+  };
+  el.innerHTML = `<div class="phase-name">${phase}</div><div class="phase-sub">${subs[phase]}</div>`;
+}
+
+let discoveryQueue = [];
+let discoveryTimer = null;
+let negotiationTimer = null;
+let performanceInterval = null;
+
+function bootNetwork() {
+  initAudio();
+  if (running) return;
+  running = true;
+  document.getElementById('btn-boot').disabled = true;
+  document.getElementById('btn-broadcast').disabled = false;
+
+  // Reset
+  edges = [];
+  packets = [];
+  ensembles = [];
+  agents.forEach(a => { a.connections.clear(); a.discovered.clear(); a.capabilities.clear(); a.ensemble = null; a.status = "idle"; });
+  edgeMessageMap = {};
+  totalMessages = 0;
+  document.getElementById('protocol-log').innerHTML = '';
+
+  // Phase 1: DISCOVERY
+  phase = "DISCOVERY";
+  updatePhaseUI();
+
+  // Build discovery order - each agent discovers others sequentially
+  discoveryQueue = [];
+  for (let i = 0; i < 8; i++) {
+    const others = [...Array(8).keys()].filter(j => j !== i);
+    shuffle(others);
+    others.slice(0, 3 + Math.floor(Math.random() * 3)).forEach(j => {
+      discoveryQueue.push({ from: i, to: j });
+    });
+  }
+  shuffle(discoveryQueue);
+
+  let dIdx = 0;
+  discoveryTimer = setInterval(() => {
+    if (dIdx >= discoveryQueue.length) {
+      clearInterval(discoveryTimer);
+      startNegotiation();
+      return;
+    }
+    const { from, to } = discoveryQueue[dIdx++];
+    setAgentStatus(agents[from], "discovering", 600);
+    sendMessage(from, to, "DISCOVER", { agentCard: agents[from].name, framework: agents[from].framework });
+    setTimeout(() => {
+      addEdge(from, to);
+      sendMessage(to, from, "ACK", { status: "discovered" });
+      agents[from].discovered.add(to);
+      agents[to].discovered.add(from);
+    }, 400 + Math.random() * 300);
+  }, 350);
+}
+
+function startNegotiation() {
+  phase = "NEGOTIATION";
+  updatePhaseUI();
+
+  // Agents exchange capabilities
+  let negSteps = [];
+  agents.forEach((a, i) => {
+    a.connections.forEach(j => {
+      negSteps.push({ from: i, to: j, step: "request" });
+    });
+  });
+  shuffle(negSteps);
+
+  let nIdx = 0;
+  negotiationTimer = setInterval(() => {
+    if (nIdx >= negSteps.length) {
+      clearInterval(negotiationTimer);
+      formEnsembles();
+      return;
+    }
+    const s = negSteps[nIdx++];
+    if (s.step === "request") {
+      setAgentStatus(agents[s.from], "communicating", 500);
+      sendMessage(s.from, s.to, "CAPABILITY_REQUEST", { query: "instruments" });
+      setTimeout(() => {
+        sendMessage(s.to, s.from, "CAPABILITY_RESPONSE", {
+          caps: agents[s.to].caps.slice(0, 2),
+          protocols: agents[s.to].protocols
+        });
+        agents[s.from].capabilities.set(s.to, agents[s.to].caps);
+      }, 300);
+    }
+  }, 250);
+}
+
+function formEnsembles() {
+  // Form 2-3 ensembles of agents
+  const unassigned = [...Array(8).keys()];
+  shuffle(unassigned);
+  const ensembleColors = ["#4a9eff", "#f97316", "#e879f9"];
+  let eIdx = 0;
+
+  const group1 = unassigned.splice(0, 3);
+  const group2 = unassigned.splice(0, 3);
+  const group3 = unassigned;
+
+  [group1, group2, group3].forEach((grp, gi) => {
+    if (grp.length < 2) { group2.push(...grp); return; }
+    const ens = { agents: grp, color: ensembleColors[gi] };
+    ensembles.push(ens);
+    grp.forEach(id => agents[id].ensemble = gi);
+
+    // Send ensemble invites
+    const leader = grp[0];
+    grp.slice(1).forEach((member, mi) => {
+      setTimeout(() => {
+        sendMessage(leader, member, "ENSEMBLE_INVITE", { ensemble: gi, members: grp.map(g => agents[g].name) });
+        setTimeout(() => {
+          sendMessage(member, leader, "ENSEMBLE_ACCEPT", { ensemble: gi });
+          // Ensure edge between ensemble members
+          addEdge(leader, member);
+        }, 300);
+      }, gi * 600 + mi * 250);
+    });
+  });
+
+  updateStats();
+  setTimeout(startPerformance, ensembles.length * 800 + 500);
+}
+
+function startPerformance() {
+  phase = "PERFORMANCE";
+  updatePhaseUI();
+  scheduleBeat();
+}
+
+function scheduleBeat() {
+  if (!running) return;
+  const beatMs = (60 / tempo) * 1000;
+  beatTimer = setTimeout(() => {
+    performBeat();
+    scheduleBeat();
+  }, beatMs);
+}
+
+function performBeat() {
+  beatCount++;
+  const scale = KEYS[currentKey];
+
+  // Each ensemble plays together
+  ensembles.forEach((ens, ei) => {
+    const bar = Math.floor(beatCount / 4);
+    const beat = beatCount % 4;
+
+    ens.agents.forEach((agentId, ai) => {
+      const agent = agents[agentId];
+      // Decide what to play based on role
+      const shouldPlay = decidePlay(agent, beat, bar);
+      if (!shouldPlay) return;
+
+      // Pick a note
+      const noteIdx = pickNote(agent, beat, bar, scale);
+      const freq = scale[noteIdx % scale.length] * (Math.random() > 0.7 ? 2 : 1) * (agent.instrument === "low-sine" ? 0.5 : 1);
+      const dur = pickDuration(agent, beat);
+
+      // Delegate task from another ensemble member
+      const others = ens.agents.filter(x => x !== agentId);
+      if (others.length > 0 && Math.random() > 0.5) {
+        const delegator = others[Math.floor(Math.random() * others.length)];
+        sendMessage(delegator, agentId, "TASK_DELEGATE", {
+          action: "play",
+          note: noteNames(noteIdx, scale),
+          bars: 1,
+          velocity: +(0.4 + Math.random() * 0.4).toFixed(2)
+        });
+      }
+
+      // Play with slight timing variation
+      setTimeout(() => {
+        sendMessage(agentId, agentId, "MUSIC_DATA", {
+          freq: +freq.toFixed(1),
+          dur: +dur.toFixed(2),
+          beat
+        });
+        playInstrument(agent, freq, dur, 0.4 + Math.random() * 0.3);
+      }, Math.random() * 60);
+    });
+  });
+
+  // Occasional cross-ensemble communication
+  if (beatCount % 8 === 0 && ensembles.length >= 2) {
+    const e1 = ensembles[0];
+    const e2 = ensembles[1];
+    const a1 = e1.agents[Math.floor(Math.random() * e1.agents.length)];
+    const a2 = e2.agents[Math.floor(Math.random() * e2.agents.length)];
+    sendMessage(a1, a2, "TASK_DELEGATE", {
+      action: "sync",
+      chord: currentKey,
+      beat: beatCount % 16
+    });
+    addEdge(a1, a2);
+  }
+
+  // Cycle phases occasionally
+  if (beatCount % 64 === 0 && beatCount > 0) {
+    cyclePhase();
+  }
+}
+
+function decidePlay(agent, beat, bar) {
+  switch (agent.instrument) {
+    case "noise-kick": return true; // drums always play
+    case "low-sine": return beat === 0 || beat === 2 || (bar % 2 === 0 && beat === 3);
+    case "triangle-chord": return beat === 0 || (bar % 2 === 1 && beat === 2);
+    case "filtered-saw": return beat === 0 || beat === 2;
+    case "sine-vibrato": return bar % 2 === 0 || beat === 0;
+    case "detuned-osc": return beat === 0 && bar % 2 === 0;
+    case "short-ping": return Math.random() > 0.35;
+    case "filtered-harmonics": return beat === 0 || (beat === 2 && bar % 2 === 0);
+    default: return Math.random() > 0.5;
+  }
+}
+
+function pickNote(agent, beat, bar, scale) {
+  const base = bar % scale.length;
+  switch (agent.instrument) {
+    case "noise-kick": return beat === 0 ? 0 : (beat === 2 ? 4 : Math.floor(Math.random() * 7));
+    case "low-sine": return [0, 4, 3, 0][beat % 4];
+    case "triangle-chord": return (base + beat) % scale.length;
+    case "filtered-saw": return (base + 2) % scale.length;
+    case "sine-vibrato": return (base + beat * 2) % scale.length;
+    case "short-ping": return Math.floor(Math.random() * scale.length);
+    case "detuned-osc": return base;
+    case "filtered-harmonics": return (base + 4) % scale.length;
+    default: return base;
+  }
+}
+
+function pickDuration(agent, beat) {
+  switch (agent.instrument) {
+    case "noise-kick": return 0.1;
+    case "short-ping": return 0.15;
+    case "low-sine": return 0.4;
+    case "detuned-osc": return 1.2;
+    case "filtered-saw": return 0.6;
+    case "filtered-harmonics": return 0.8;
+    default: return 0.3;
+  }
+}
+
+function noteNames(idx, scale) {
+  const names = ["C","D","E","F","G","A","B"];
+  return names[idx % names.length] + (idx >= 7 ? "5" : "4");
+}
+
+function cyclePhase() {
+  // Brief re-discovery / negotiation before resuming
+  const oldPhase = phase;
+  phase = "DISCOVERY";
+  updatePhaseUI();
+
+  // Quick re-discover between random pairs
+  let count = 0;
+  const quick = setInterval(() => {
+    if (count >= 4) {
+      clearInterval(quick);
+      phase = "NEGOTIATION";
+      updatePhaseUI();
+      setTimeout(() => {
+        phase = "PERFORMANCE";
+        updatePhaseUI();
+      }, 1500);
+      return;
+    }
+    const a = Math.floor(Math.random() * 8);
+    let b = Math.floor(Math.random() * 8);
+    if (b === a) b = (a + 1) % 8;
+    sendMessage(a, b, "DISCOVER", { agentCard: agents[a].name, framework: agents[a].framework });
+    addEdge(a, b);
+    setTimeout(() => sendMessage(b, a, "ACK", { status: "re-discovered" }), 250);
+    count++;
+  }, 300);
+}
+
+// ===================== CONTROLS =====================
+function broadcast() {
+  if (!running) return;
+  const sender = Math.floor(Math.random() * 8);
+  setAgentStatus(agents[sender], "communicating", 1200);
+  for (let i = 0; i < 8; i++) {
+    if (i === sender) continue;
+    setTimeout(() => {
+      sendMessage(sender, i, "TASK_DELEGATE", {
+        action: "broadcast",
+        from: agents[sender].name,
+        message: "sync-all"
+      });
+      addEdge(sender, i);
+      const scale = KEYS[currentKey];
+      const freq = scale[Math.floor(Math.random() * scale.length)];
+      playInstrument(agents[i], freq, 0.4, 0.35);
+    }, i * 120);
+  }
+}
+
+function changeTempo(val) {
+  tempo = +val;
+  document.getElementById('tempo-val').textContent = val;
+  if (running && agents.length > 0) {
+    const sender = Math.floor(Math.random() * 8);
+    agents.forEach((_, i) => {
+      if (i !== sender) {
+        sendMessage(sender, i, "TEMPO_CHANGE", { bpm: tempo });
+      }
+    });
+  }
+}
+
+function changeKey(val) {
+  currentKey = val;
+  if (running && agents.length > 0) {
+    const sender = Math.floor(Math.random() * 8);
+    agents.forEach((_, i) => {
+      if (i !== sender) {
+        sendMessage(sender, i, "KEY_CHANGE", { key: val });
+      }
+    });
+  }
+}
+
+function resetNetwork() {
+  running = false;
+  clearTimeout(beatTimer);
+  clearInterval(discoveryTimer);
+  clearInterval(negotiationTimer);
+  document.getElementById('btn-boot').disabled = false;
+  document.getElementById('btn-broadcast').disabled = true;
+  document.getElementById('protocol-log').innerHTML = '';
+  initAgents();
+}
+
+// ===================== MODALS =====================
+function showAgentCard(agent) {
+  const modal = document.getElementById('agent-card-modal');
+  const content = document.getElementById('card-content');
+  const conns = [...agent.connections].map(c => agents[c].name).join(", ") || "None";
+  const ensName = agent.ensemble !== null ? `Ensemble ${agent.ensemble}` : "None";
+  content.innerHTML = `
+    <h3 style="color:${agent.color}">Agent Card: ${agent.name}</h3>
+    <div class="card-row"><span class="card-label">Framework</span><span class="card-val">${agent.framework}</span></div>
+    <div class="card-row"><span class="card-label">Instrument</span><span class="card-val">${agent.instrument}</span></div>
+    <div class="card-row"><span class="card-label">Status</span><span class="card-val">${agent.status}</span></div>
+    <div class="card-row"><span class="card-label">Connections</span><span class="card-val">${conns}</span></div>
+    <div class="card-row"><span class="card-label">Ensemble</span><span class="card-val">${ensName}</span></div>
+    <div class="card-row"><span class="card-label">Protocols</span><span class="card-val">${agent.protocols.join(", ")}</span></div>
+    <div class="card-row"><span class="card-label">Messages Sent</span><span class="card-val">${countMessages(agent.id)}</span></div>
+    <div style="margin-top:8px;font-size:11px;color:#667">Capabilities</div>
+    <div class="badge-list">
+      ${agent.caps.map(c => `<span class="badge" style="border-color:${agent.color}40;color:${agent.color}">${c}</span>`).join("")}
+    </div>
+  `;
+  modal.classList.add('show');
+  document.getElementById('overlay').classList.add('show');
+}
+
+function showEdgeMessages(a, b) {
+  const modal = document.getElementById('edge-modal');
+  const content = document.getElementById('edge-content');
+  const ek = edgeKey(a, b);
+  const msgs = edgeMessageMap[ek] || [];
+  content.innerHTML = `
+    <h3>${agents[a].name} <span style="color:#556">&harr;</span> ${agents[b].name}</h3>
+    <div style="font-size:10px;color:#667;margin-bottom:8px">${msgs.length} messages exchanged</div>
+    ${msgs.slice(-30).map(m => `<div class="edge-msg" style="border-left:2px solid ${MSG_COLORS[m.type] || '#555'};padding-left:6px">
+      <span style="color:${MSG_COLORS[m.type]}">${m.type}</span> <span style="color:#556">${m.from} &rarr; ${m.to}</span>
+      ${Object.keys(m.payload).length ? `<br><span style="color:#667">${JSON.stringify(m.payload)}</span>` : ""}
+    </div>`).join("")}
+  `;
+  modal.classList.add('show');
+  document.getElementById('overlay').classList.add('show');
+}
+
+function closeModals() {
+  document.getElementById('agent-card-modal').classList.remove('show');
+  document.getElementById('edge-modal').classList.remove('show');
+  document.getElementById('overlay').classList.remove('show');
+}
+
+function countMessages(agentId) {
+  let c = 0;
+  for (const k in edgeMessageMap) {
+    edgeMessageMap[k].forEach(m => { if (m.fromId === agentId) c++; });
+  }
+  return c;
+}
+
+// ===================== INTERACTION =====================
+let dragAgent = null;
+let dragOffset = { x: 0, y: 0 };
+let mousePos = { x: 0, y: 0 };
+
+canvas.addEventListener('mousedown', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  mousePos = { x: mx, y: my };
+
+  // Check agent click
+  for (const a of agents) {
+    const dx = mx - a.x, dy = my - a.y;
+    if (dx * dx + dy * dy < a.radius * a.radius) {
+      if (e.detail === 2) {
+        // Double click = show card
+        showAgentCard(a);
+        return;
+      }
+      dragAgent = a;
+      a.dragging = true;
+      dragOffset = { x: mx - a.x, y: my - a.y };
+      return;
+    }
+  }
+
+  // Check edge click
+  for (const edge of edges) {
+    const a = agents[edge.from], b = agents[edge.to];
+    const dist = pointToSegmentDist(mx, my, a.x, a.y, b.x, b.y);
+    if (dist < 8) {
+      showEdgeMessages(edge.from, edge.to);
+      return;
+    }
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  const rect = canvas.getBoundingClientRect();
+  mousePos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+  if (dragAgent) {
+    dragAgent.x = mousePos.x - dragOffset.x;
+    dragAgent.y = mousePos.y - dragOffset.y;
+    dragAgent.targetX = dragAgent.x;
+    dragAgent.targetY = dragAgent.y;
+  }
+});
+
+canvas.addEventListener('mouseup', () => {
+  if (dragAgent) dragAgent.dragging = false;
+  dragAgent = null;
+});
+
+canvas.addEventListener('click', e => {
+  const rect = canvas.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  for (const a of agents) {
+    const dx = mx - a.x, dy = my - a.y;
+    if (dx * dx + dy * dy < a.radius * a.radius) {
+      showAgentCard(a);
+      return;
+    }
+  }
+});
+
+function pointToSegmentDist(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  if (len2 === 0) return Math.hypot(px - ax, py - ay);
+  let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+// ===================== STATS =====================
+function updateStats() {
+  document.getElementById('stat-msgs').textContent = totalMessages;
+  document.getElementById('stat-conns').textContent = edges.length;
+  document.getElementById('stat-latency').innerHTML = (50 + Math.floor(Math.random() * 80)) + '<span style="font-size:10px;color:#667">ms</span>';
+  document.getElementById('stat-ensembles').textContent = ensembles.length;
+}
+
+// ===================== RENDER =====================
+function render() {
+  animFrame = requestAnimationFrame(render);
+  const W = canvas.width, H = canvas.height;
+  ctx.clearRect(0, 0, W, H);
+
+  // Background subtle grid
+  ctx.strokeStyle = "#111125";
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x < W; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke(); }
+  for (let y = 0; y < H; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke(); }
+
+  const now = Date.now();
+
+  // Smooth agent positions
+  agents.forEach(a => {
+    if (!a.dragging) {
+      a.x += (a.targetX - a.x) * 0.05;
+      a.y += (a.targetY - a.y) * 0.05;
+    }
+    if (a.statusTimer && now > a.statusTimer) {
+      a.status = "idle";
+      a.statusTimer = 0;
+    }
+    a.glowIntensity *= 0.96;
+  });
+
+  // Draw ensemble regions
+  ensembles.forEach((ens, ei) => {
+    if (ens.agents.length < 2) return;
+    const pts = ens.agents.map(id => agents[id]);
+    const cx = pts.reduce((s, p) => s + p.x, 0) / pts.length;
+    const cy = pts.reduce((s, p) => s + p.y, 0) / pts.length;
+    const maxR = Math.max(...pts.map(p => Math.hypot(p.x - cx, p.y - cy))) + 80;
+    const grad = ctx.createRadialGradient(cx, cy, 0, cx, cy, maxR);
+    grad.addColorStop(0, ens.color + "08");
+    grad.addColorStop(1, ens.color + "00");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(cx, cy, maxR, 0, Math.PI * 2);
+    ctx.fill();
+  });
+
+  // Draw edges
+  edges.forEach(e => {
+    const a = agents[e.from], b = agents[e.to];
+    e.formProgress = Math.min(1, (e.formProgress || 0) + 0.02);
+    const progress = e.formProgress;
+
+    const midX = a.x + (b.x - a.x) * progress;
+    const midY = a.y + (b.y - a.y) * progress;
+
+    // Check if either agent is active
+    const active = a.glowIntensity > 0.1 || b.glowIntensity > 0.1;
+
+    ctx.strokeStyle = active ? "#2a2a6a" : "#151530";
+    ctx.lineWidth = active ? 2 : 1;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(midX, midY);
+    ctx.stroke();
+
+    // Active glow
+    if (active) {
+      ctx.strokeStyle = "#4a4a8a40";
+      ctx.lineWidth = 6;
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+  });
+
+  // Draw packets
+  packets.forEach((p, pi) => {
+    p.progress += p.speed;
+    if (p.progress >= 1) { packets.splice(pi, 1); return; }
+    const a = agents[p.fromId], b = agents[p.toId];
+    const px = a.x + (b.x - a.x) * p.progress;
+    const py = a.y + (b.y - a.y) * p.progress;
+
+    // Glow
+    const grad = ctx.createRadialGradient(px, py, 0, px, py, 16);
+    grad.addColorStop(0, p.color + "80");
+    grad.addColorStop(1, p.color + "00");
+    ctx.fillStyle = grad;
+    ctx.beginPath();
+    ctx.arc(px, py, 16, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Core dot
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(px, py, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Label
+    ctx.font = "8px monospace";
+    ctx.fillStyle = p.color + "cc";
+    ctx.textAlign = "center";
+    ctx.fillText(p.type, px, py - 10);
+  });
+
+  // Draw agent nodes
+  agents.forEach((a, i) => {
+    const statusColors = { idle: "#334", discovering: "#4a9eff", communicating: "#f97316", playing: "#e879f9" };
+    const sc = statusColors[a.status] || "#334";
+
+    // Outer glow
+    if (a.glowIntensity > 0.05) {
+      const grad = ctx.createRadialGradient(a.x, a.y, a.radius * 0.5, a.x, a.y, a.radius * 2.5);
+      grad.addColorStop(0, a.color + Math.floor(a.glowIntensity * 60).toString(16).padStart(2, '0'));
+      grad.addColorStop(1, a.color + "00");
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(a.x, a.y, a.radius * 2.5, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Main circle
+    ctx.fillStyle = "#0e0e1e";
+    ctx.strokeStyle = a.color + "80";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(a.x, a.y, a.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    // Status ring
+    ctx.strokeStyle = sc;
+    ctx.lineWidth = 3;
+    ctx.beginPath();
+    ctx.arc(a.x, a.y, a.radius + 3, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Agent name
+    ctx.fillStyle = a.color;
+    ctx.font = "bold 11px 'Segoe UI', sans-serif";
+    ctx.textAlign = "center";
+    ctx.fillText(a.name, a.x, a.y - 16);
+
+    // Framework label
+    ctx.fillStyle = "#556";
+    ctx.font = "9px 'Segoe UI', sans-serif";
+    ctx.fillText(a.framework, a.x, a.y - 4);
+
+    // Status text
+    ctx.fillStyle = sc;
+    ctx.font = "8px monospace";
+    ctx.fillText(a.status.toUpperCase(), a.x, a.y + 10);
+
+    // Mini waveform
+    if (a.analyser && a.status === "playing") {
+      const waveData = new Float32Array(a.analyser.fftSize);
+      a.analyser.getFloatTimeDomainData(waveData);
+      ctx.strokeStyle = a.color + "aa";
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      const ww = 36, wh = 10, wx = a.x - ww / 2, wy = a.y + 18;
+      for (let j = 0; j < ww; j++) {
+        const idx = Math.floor((j / ww) * waveData.length);
+        const val = waveData[idx] || 0;
+        const yp = wy + val * wh;
+        j === 0 ? ctx.moveTo(wx + j, yp) : ctx.lineTo(wx + j, yp);
+      }
+      ctx.stroke();
+    } else {
+      // Static mini-wave placeholder
+      ctx.strokeStyle = "#223";
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      const ww = 36, wx = a.x - ww / 2, wy = a.y + 22;
+      for (let j = 0; j < ww; j++) {
+        const yp = wy + Math.sin(j * 0.4 + now * 0.002 + i) * 3;
+        j === 0 ? ctx.moveTo(wx + j, yp) : ctx.lineTo(wx + j, yp);
+      }
+      ctx.stroke();
+    }
+
+    // Capability badges (top)
+    const badges = a.caps.slice(0, 3);
+    const bw = badges.length * 36;
+    badges.forEach((b, bi) => {
+      const bx = a.x - bw / 2 + bi * 36 + 18;
+      const by = a.y + 34;
+      ctx.fillStyle = a.color + "20";
+      ctx.strokeStyle = a.color + "40";
+      ctx.lineWidth = 0.5;
+      roundRect(ctx, bx - 14, by - 5, 28, 11, 3);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = a.color + "99";
+      ctx.font = "7px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(b.slice(0, 6), bx, by + 3);
+    });
+
+    // Connection count indicator
+    if (a.connections.size > 0) {
+      const cx2 = a.x + a.radius * 0.7;
+      const cy2 = a.y - a.radius * 0.7;
+      ctx.fillStyle = "#2a2a5a";
+      ctx.beginPath();
+      ctx.arc(cx2, cy2, 9, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#aaa";
+      ctx.font = "bold 8px sans-serif";
+      ctx.textAlign = "center";
+      ctx.fillText(a.connections.size, cx2, cy2 + 3);
+    }
+  });
+
+  // Hovering tooltip
+  let hoveredAgent = null;
+  for (const a of agents) {
+    const dx = mousePos.x - a.x, dy = mousePos.y - a.y;
+    if (dx * dx + dy * dy < a.radius * a.radius) {
+      hoveredAgent = a;
+      break;
+    }
+  }
+  if (hoveredAgent) {
+    canvas.style.cursor = "pointer";
+  } else {
+    // Check edge hover
+    let hoveredEdge = false;
+    for (const edge of edges) {
+      const a = agents[edge.from], b = agents[edge.to];
+      const dist = pointToSegmentDist(mousePos.x, mousePos.y, a.x, a.y, b.x, b.y);
+      if (dist < 8) { hoveredEdge = true; break; }
+    }
+    canvas.style.cursor = hoveredEdge ? "pointer" : "default";
+  }
+}
+
+function roundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function shuffle(arr) {
+  for (let i = arr.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [arr[i], arr[j]] = [arr[j], arr[i]];
+  }
+  return arr;
+}
+
+// ===================== INIT & START =====================
+initAgents();
+resize();
+render();
+</script>
+</body>
+</html>

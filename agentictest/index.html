@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Agentic Design Patterns — Visual Music Apps</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a12;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    min-height: 100vh;
+    padding: 0 20px 60px;
+  }
+
+  header {
+    text-align: center;
+    padding: 48px 0 12px;
+  }
+  header h1 {
+    font-size: 2.2rem;
+    font-weight: 700;
+    letter-spacing: 3px;
+    background: linear-gradient(135deg, #4d96ff, #ff6b6b, #ffd93d, #6bcb77, #ce93d8);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  header p {
+    margin-top: 8px;
+    color: #666;
+    font-size: 0.95rem;
+    max-width: 640px;
+    margin-left: auto;
+    margin-right: auto;
+    line-height: 1.5;
+  }
+  header .book-ref {
+    margin-top: 14px;
+    font-size: 0.8rem;
+    color: #444;
+    font-style: italic;
+  }
+
+  .part-header {
+    max-width: 900px;
+    margin: 48px auto 20px;
+    padding-bottom: 10px;
+    border-bottom: 1px solid #1a1a2e;
+  }
+  .part-header h2 {
+    font-size: 1.1rem;
+    letter-spacing: 2px;
+    color: #555;
+    font-weight: 600;
+    text-transform: uppercase;
+  }
+  .part-header p {
+    margin-top: 4px;
+    font-size: 0.8rem;
+    color: #3a3a4a;
+  }
+
+  .grid {
+    max-width: 900px;
+    margin: 0 auto;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .card {
+    display: grid;
+    grid-template-columns: 56px 1fr auto;
+    align-items: center;
+    gap: 20px;
+    background: #0f0f1a;
+    border: 1px solid #1a1a2e;
+    border-radius: 12px;
+    padding: 20px 24px;
+    text-decoration: none;
+    color: inherit;
+    transition: border-color 0.3s, transform 0.2s, box-shadow 0.3s;
+    position: relative;
+    overflow: hidden;
+  }
+  .card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 30px rgba(0,0,0,0.4);
+  }
+  .card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 3px;
+    height: 100%;
+    border-radius: 12px 0 0 12px;
+  }
+
+  .card-chapter {
+    font-size: 1.6rem;
+    font-weight: 700;
+    text-align: center;
+    line-height: 1;
+    opacity: 0.7;
+    font-family: 'Courier New', monospace;
+  }
+  .card-chapter span {
+    display: block;
+    font-size: 0.55rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    margin-bottom: 2px;
+    opacity: 0.5;
+  }
+
+  .card-body h3 {
+    font-size: 1.1rem;
+    font-weight: 600;
+    margin-bottom: 2px;
+  }
+  .card-body .pattern-name {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 8px;
+    opacity: 0.6;
+  }
+  .card-body p {
+    font-size: 0.85rem;
+    color: #888;
+    line-height: 1.5;
+  }
+
+  .card-arrow {
+    font-size: 1.3rem;
+    opacity: 0.3;
+    transition: opacity 0.3s, transform 0.3s;
+  }
+  .card:hover .card-arrow {
+    opacity: 0.8;
+    transform: translateX(4px);
+  }
+
+  /* Per-card accent colors */
+  .card[data-ch="1"] { border-color: #00d4ff22; }
+  .card[data-ch="1"]:hover { border-color: #00d4ff66; }
+  .card[data-ch="1"]::before { background: #00d4ff; }
+  .card[data-ch="1"] .card-chapter { color: #00d4ff; }
+  .card[data-ch="1"] h3 { color: #00d4ff; }
+
+  .card[data-ch="2"] { border-color: #ff6b6b22; }
+  .card[data-ch="2"]:hover { border-color: #ff6b6b66; }
+  .card[data-ch="2"]::before { background: #ff6b6b; }
+  .card[data-ch="2"] .card-chapter { color: #ff6b6b; }
+  .card[data-ch="2"] h3 { color: #ff6b6b; }
+
+  .card[data-ch="3"] { border-color: #6bcb7722; }
+  .card[data-ch="3"]:hover { border-color: #6bcb7766; }
+  .card[data-ch="3"]::before { background: #6bcb77; }
+  .card[data-ch="3"] .card-chapter { color: #6bcb77; }
+  .card[data-ch="3"] h3 { color: #6bcb77; }
+
+  .card[data-ch="4"] { border-color: #ffd93d22; }
+  .card[data-ch="4"]:hover { border-color: #ffd93d66; }
+  .card[data-ch="4"]::before { background: #ffd93d; }
+  .card[data-ch="4"] .card-chapter { color: #ffd93d; }
+  .card[data-ch="4"] h3 { color: #ffd93d; }
+
+  .card[data-ch="5"] { border-color: #ce93d822; }
+  .card[data-ch="5"]:hover { border-color: #ce93d866; }
+  .card[data-ch="5"]::before { background: #ce93d8; }
+  .card[data-ch="5"] .card-chapter { color: #ce93d8; }
+  .card[data-ch="5"] h3 { color: #ce93d8; }
+
+  .card[data-ch="6"] { border-color: #4d96ff22; }
+  .card[data-ch="6"]:hover { border-color: #4d96ff66; }
+  .card[data-ch="6"]::before { background: #4d96ff; }
+  .card[data-ch="6"] .card-chapter { color: #4d96ff; }
+  .card[data-ch="6"] h3 { color: #4d96ff; }
+
+  .card[data-ch="7"] { border-color: #ff8a6522; }
+  .card[data-ch="7"]:hover { border-color: #ff8a6566; }
+  .card[data-ch="7"]::before { background: #ff8a65; }
+  .card[data-ch="7"] .card-chapter { color: #ff8a65; }
+  .card[data-ch="7"] h3 { color: #ff8a65; }
+
+  /* Part Four accent colors */
+  .card[data-ch="15"] { border-color: #00e5ff22; }
+  .card[data-ch="15"]:hover { border-color: #00e5ff66; }
+  .card[data-ch="15"]::before { background: #00e5ff; }
+  .card[data-ch="15"] .card-chapter { color: #00e5ff; }
+  .card[data-ch="15"] h3 { color: #00e5ff; }
+
+  .card[data-ch="16"] { border-color: #ffab4022; }
+  .card[data-ch="16"]:hover { border-color: #ffab4066; }
+  .card[data-ch="16"]::before { background: #ffab40; }
+  .card[data-ch="16"] .card-chapter { color: #ffab40; }
+  .card[data-ch="16"] h3 { color: #ffab40; }
+
+  .card[data-ch="17"] { border-color: #ea80fc22; }
+  .card[data-ch="17"]:hover { border-color: #ea80fc66; }
+  .card[data-ch="17"]::before { background: #ea80fc; }
+  .card[data-ch="17"] .card-chapter { color: #ea80fc; }
+  .card[data-ch="17"] h3 { color: #ea80fc; }
+
+  .card[data-ch="18"] { border-color: #ff525222; }
+  .card[data-ch="18"]:hover { border-color: #ff525266; }
+  .card[data-ch="18"]::before { background: #ff5252; }
+  .card[data-ch="18"] .card-chapter { color: #ff5252; }
+  .card[data-ch="18"] h3 { color: #ff5252; }
+
+  .card[data-ch="19"] { border-color: #69f0ae22; }
+  .card[data-ch="19"]:hover { border-color: #69f0ae66; }
+  .card[data-ch="19"]::before { background: #69f0ae; }
+  .card[data-ch="19"] .card-chapter { color: #69f0ae; }
+  .card[data-ch="19"] h3 { color: #69f0ae; }
+
+  .card[data-ch="20"] { border-color: #ffd74022; }
+  .card[data-ch="20"]:hover { border-color: #ffd74066; }
+  .card[data-ch="20"]::before { background: #ffd740; }
+  .card[data-ch="20"] .card-chapter { color: #ffd740; }
+  .card[data-ch="20"] h3 { color: #ffd740; }
+
+  .card[data-ch="21"] { border-color: #b388ff22; }
+  .card[data-ch="21"]:hover { border-color: #b388ff66; }
+  .card[data-ch="21"]::before { background: #b388ff; }
+  .card[data-ch="21"] .card-chapter { color: #b388ff; }
+  .card[data-ch="21"] h3 { color: #b388ff; }
+
+  footer {
+    text-align: center;
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid #1a1a2e;
+    color: #333;
+    font-size: 0.75rem;
+    max-width: 900px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  @media (max-width: 640px) {
+    .card {
+      grid-template-columns: 44px 1fr;
+      gap: 14px;
+      padding: 16px;
+    }
+    .card-arrow { display: none; }
+    header h1 { font-size: 1.5rem; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>AGENTIC DESIGN PATTERNS</h1>
+  <p>Fourteen agentic AI patterns from the book, each reimagined as an interactive visual music application built with the Web Audio API.</p>
+  <div class="book-ref">Based on "Agentic Design Patterns: A Hands-On Guide to Building Intelligent Systems" by Antonio Gulli</div>
+</header>
+
+<div class="part-header">
+  <h2>Part One — Core Patterns</h2>
+  <p>Foundational patterns for building agentic systems: chaining, routing, parallelization, reflection, tool use, planning, and multi-agent coordination.</p>
+</div>
+
+<div class="grid">
+
+  <a class="card" data-ch="1" href="prompt-chain/index.html">
+    <div class="card-chapter"><span>Ch</span>1</div>
+    <div class="card-body">
+      <h3>Tone Chain</h3>
+      <div class="pattern-name">Prompt Chaining Pattern</div>
+      <p>Sound flows through a sequential pipeline of transformation stages. Each node processes and forwards to the next — source, pitch shift, filter, delay, reverb — producing an audibly evolving signal from input to output.</p>
+    </div>
+    <div class="card-arrow">&rarr;</div>
+  </a>
+
+  <a class="card" data-ch="2" href="sound-router/index.html">
+    <div class="card-chapter"><span>Ch</span>2</div>
+    <div class="card-body">
+      <h3>Sound Router</h3>
+      <div class="pattern-name">Routing Pattern</div>
+      <p>Play notes via keyboard or mouse. Each note is classified by frequency and dynamically routed to one of four specialized sonic pathways — Crystal, Warm, Pulse, or Deep — with animated particles showing the routing decision in real time.</p>
+    </div>
+    <div class="card-arrow">&rarr;</div>
+  </a>
+
+  <a class="card" data-ch="3" href="parallel-synth/index.html">
+    <div class="card-chapter"><span>Ch</span>3</div>
+    <div class="card-body">
+      <h3>Parallel Synth</h3>
+      <div class="pattern-name">Parallelization Pattern</div>
+      <p>Four independent sound agents — Drums, Bass, Melody, and Ambient — generate musical layers concurrently. Each runs its own sequencer, and all outputs merge through a shared audio graph into a unified mix.</p>
+    </div>
+    <div class="card-arrow">&rarr;</div>
+  </a>
+
+  <a class="card" data-ch="4" href="reflection/index.html">
+    <div class="card-chapter"><span>Ch</span>4</div>
+    <div class="card-body">
+      <h3>Evolving Melody</h3>
+      <div class="pattern-name">Reflection Pattern</div>
+      <p>Random melodies are generated and scored by a critic on consonance, contour, and rhythm variety. The best melody survives and mutates into the next generation. Watch fitness climb as the reflection loop iteratively refines the music.</p>
+    </div>
+    <div class="card-arrow">&rarr;</div>
+  </a>
+
+  <a class="card" data-ch="5" href="tool-use/index.html">
+    <div class="card-chapter"><span>Ch</span>5</div>
+    <div class="card-body">
+      <h3>Sound Toolkit</h3>
+      <div class="pattern-name">Tool Use Pattern</div>
+      <p>Describe a mood and an agent selects the right instruments from its toolkit — synth pads, drum patterns, bass lines, arpeggios, reverb, and filters. Watch it think, choose, invoke each tool, and build a soundscape from scratch.</p>
+    </div>
+    <div class="card-arrow">&rarr;</div>
+  </a>
+
+  <a class="card" data-ch="6" href="planning/index.html">
+    <div class="card-chapter"><span>Ch</span>6</div>
+    <div class="card-body">
+      <h3>Song Architect</h3>
+      <div class="pattern-name">Planning Pattern</div>
+      <p>Pick a genre, mood, and tempo. The system decomposes the goal into a structured plan — Intro, Verse, Chorus, Bridge, Outro — then executes each section in sequence, building up instrumentation as the song progresses.</p>
+    </div>
+    <div class="card-arrow">&rarr;</div>
+  </a>
+
+  <a class="card" data-ch="7" href="multi-agent/index.html">
+    <div class="card-chapter"><span>Ch</span>7</div>
+    <div class="card-body">
+      <h3>Jazz Ensemble</h3>
+      <div class="pattern-name">Multi-Agent Pattern</div>
+      <p>Four AI musicians — Piano, Bass, Drums, and Sax — improvise together. They communicate via visible messages, rotate leadership, and adapt to each other's playing. Emergent music through agent collaboration.</p>
+    </div>
+    <div class="card-arrow">&rarr;</div>
+  </a>
+
+</div>
+
+<div class="part-header">
+  <h2>Part Four — Advanced Patterns</h2>
+  <p>Production-grade patterns for communication protocols, resource management, reasoning, safety, monitoring, prioritization, and autonomous exploration.</p>
+</div>
+
+<div class="grid">
+
+  <a class="card" data-ch="15" href="a2a-network/index.html">
+    <div class="card-chapter"><span>Ch</span>15</div>
+    <div class="card-body">
+      <h3>Network Symphony</h3>
+      <div class="pattern-name">Inter-Agent Communication (A2A) Pattern</div>
+      <p>Eight musical agents across different "frameworks" discover each other, exchange Agent Cards, negotiate protocols, and form ensembles. Watch the network self-organize through discovery, negotiation, and collaborative performance phases — with every A2A message visible in a protocol inspector.</p>
+    </div>
+    <div class="card-arrow">&rarr;</div>
+  </a>
+
+  <a class="card" data-ch="16" href="resource-optimizer/index.html">
+    <div class="card-chapter"><span>Ch</span>16</div>
+    <div class="card-body">
+      <h3>Budget Orchestra</h3>
+      <div class="pattern-name">Resource-Aware Optimization Pattern</div>
+      <p>A 16-step sequencer with a depleting compute budget. Each note costs credits based on its quality tier — Premium, Standard, or Economy. An auto-optimizer allocates resources intelligently, and fallback mode gracefully degrades when the budget runs low. Full analytics dashboard tracks cost, quality, and efficiency.</p>
+    </div>
+    <div class="card-arrow">&rarr;</div>
+  </a>
+
+  <a class="card" data-ch="17" href="reasoning/index.html">
+    <div class="card-chapter"><span>Ch</span>17</div>
+    <div class="card-body">
+      <h3>Composition Reasoner</h3>
+      <div class="pattern-name">Reasoning Techniques Pattern</div>
+      <p>Watch a composition built through explicit reasoning. Chain-of-Thought plans the melody step by step, Tree-of-Thought explores branching chord progressions with scored alternatives, and a ReAct loop observes, thinks, acts, and self-corrects. Click tree nodes to audition chords, then play the full composed piece.</p>
+    </div>
+    <div class="card-arrow">&rarr;</div>
+  </a>
+
+  <a class="card" data-ch="18" href="guardrails/index.html">
+    <div class="card-chapter"><span>Ch</span>18</div>
+    <div class="card-body">
+      <h3>Guarded Synth</h3>
+      <div class="pattern-name">Guardrails / Safety Pattern</div>
+      <p>An interactive synthesizer where every action passes through 5 visible guardrail gates — input validation, rate limiting, harmony checking, output filtering, and safety monitoring. Toggle gates on and off, run stress tests, and watch the pipeline catch unsafe audio in real time with animated pass/block indicators.</p>
+    </div>
+    <div class="card-arrow">&rarr;</div>
+  </a>
+
+  <a class="card" data-ch="19" href="eval-monitor/index.html">
+    <div class="card-chapter"><span>Ch</span>19</div>
+    <div class="card-body">
+      <h3>Performance Lab</h3>
+      <div class="pattern-name">Evaluation and Monitoring Pattern</div>
+      <p>A professional monitoring dashboard tracking three music generator agents. Live metric charts, trajectory analysis comparing expected vs actual output, A/B comparison with voting, drift detection with alerts, and anomaly injection. Sparklines, severity-tagged logs, and adjustable thresholds throughout.</p>
+    </div>
+    <div class="card-arrow">&rarr;</div>
+  </a>
+
+  <a class="card" data-ch="20" href="prioritization/index.html">
+    <div class="card-chapter"><span>Ch</span>20</div>
+    <div class="card-body">
+      <h3>Priority Mixer</h3>
+      <div class="pattern-name">Prioritization Pattern</div>
+      <p>Sound requests compete for 6 limited audio channels. A priority engine scores each by urgency, importance, dependencies, and freshness. Watch the queue sort in real time, see higher-priority sounds preempt lower ones, and stress-test with a flood of requests. 14 synthesized sound types with full scheduling logic.</p>
+    </div>
+    <div class="card-arrow">&rarr;</div>
+  </a>
+
+  <a class="card" data-ch="21" href="exploration/index.html">
+    <div class="card-chapter"><span>Ch</span>21</div>
+    <div class="card-body">
+      <h3>Sound Explorer</h3>
+      <div class="pattern-name">Exploration and Discovery Pattern</div>
+      <p>Navigate a fog-of-war 24x24 musical landscape with four distinct regions — Melodic Plains, Rhythmic Caves, Harmonic Forest, and Experimental Void. Discover unique sounds, mark rare finds, build a collection, and combine discoveries. Auto-explore mode with pathfinding seeks out the unknown.</p>
+    </div>
+    <div class="card-arrow">&rarr;</div>
+  </a>
+
+</div>
+
+<footer>
+  Each app is a single HTML file using the Web Audio API — no external dependencies. Click any card to launch.
+</footer>
+
+</body>
+</html>

@@ -1,0 +1,676 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Parallel Synth - Agentic Music Browser</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a0f;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    text-align: center;
+    padding: 12px 0 4px;
+    background: linear-gradient(180deg, #12121a 0%, transparent 100%);
+    z-index: 10;
+  }
+  header h1 {
+    font-size: 1.4rem;
+    font-weight: 300;
+    letter-spacing: 6px;
+    text-transform: uppercase;
+    background: linear-gradient(90deg, #ff6b9d, #c084fc, #60a5fa, #34d399);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  header p {
+    font-size: 0.65rem;
+    color: #666;
+    letter-spacing: 3px;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  #canvas-wrap {
+    flex: 1;
+    position: relative;
+    min-height: 0;
+  }
+  canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+
+  #controls {
+    display: flex;
+    gap: 8px;
+    padding: 10px 16px;
+    background: rgba(10, 10, 18, 0.95);
+    border-top: 1px solid #1a1a2e;
+    align-items: stretch;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+
+  .agent-card {
+    flex: 1;
+    min-width: 160px;
+    max-width: 240px;
+    background: rgba(20, 20, 35, 0.9);
+    border: 1px solid #222;
+    border-radius: 10px;
+    padding: 10px 14px;
+    position: relative;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+  .agent-card.active {
+    box-shadow: 0 0 20px var(--glow);
+  }
+  .agent-card .agent-label {
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    color: #888;
+    margin-bottom: 2px;
+  }
+  .agent-card .agent-name {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--accent);
+    margin-bottom: 6px;
+  }
+  .agent-card .status-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: #333;
+    display: inline-block;
+    margin-right: 4px;
+    transition: background 0.2s;
+  }
+  .agent-card.active .status-dot {
+    background: var(--accent);
+    box-shadow: 0 0 6px var(--accent);
+  }
+
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin-top: 4px;
+  }
+  .slider-row label {
+    font-size: 0.55rem;
+    color: #666;
+    width: 28px;
+    text-transform: uppercase;
+  }
+  .slider-row input[type="range"] {
+    flex: 1;
+    height: 4px;
+    -webkit-appearance: none;
+    background: #1a1a2e;
+    border-radius: 2px;
+    outline: none;
+  }
+  .slider-row input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 12px; height: 12px;
+    border-radius: 50%;
+    background: var(--accent);
+    cursor: pointer;
+  }
+
+  .toggle-btn {
+    display: block;
+    width: 100%;
+    margin-top: 6px;
+    padding: 5px 0;
+    border: 1px solid var(--accent);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--accent);
+    font-size: 0.6rem;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  .toggle-btn:hover {
+    background: var(--accent);
+    color: #0a0a0f;
+  }
+  .agent-card.active .toggle-btn {
+    background: var(--accent);
+    color: #0a0a0f;
+  }
+
+  #master {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    min-width: 100px;
+  }
+  #master button {
+    width: 56px; height: 56px;
+    border-radius: 50%;
+    border: 2px solid #c084fc;
+    background: transparent;
+    color: #c084fc;
+    font-size: 1.2rem;
+    cursor: pointer;
+    transition: all 0.3s;
+  }
+  #master button:hover, #master button.playing {
+    background: #c084fc;
+    color: #0a0a0f;
+    box-shadow: 0 0 24px rgba(192, 132, 252, 0.4);
+  }
+  #master .bpm-wrap {
+    margin-top: 6px;
+    text-align: center;
+  }
+  #master .bpm-wrap label {
+    font-size: 0.55rem;
+    color: #666;
+    letter-spacing: 1px;
+  }
+  #master .bpm-wrap input {
+    width: 60px;
+    background: #1a1a2e;
+    border: 1px solid #333;
+    border-radius: 4px;
+    color: #c084fc;
+    text-align: center;
+    font-size: 0.75rem;
+    padding: 2px;
+    outline: none;
+  }
+
+  #pattern-info {
+    position: absolute;
+    bottom: 8px;
+    right: 12px;
+    font-size: 0.5rem;
+    color: #444;
+    letter-spacing: 1px;
+    z-index: 5;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Parallel Synth</h1>
+  <p>Agentic Parallelization Pattern &bull; Visual Music Browser</p>
+</header>
+
+<div id="canvas-wrap">
+  <canvas id="viz"></canvas>
+  <div id="pattern-info">PATTERN: PARALLELIZATION &mdash; 4 AGENTS &rarr; MERGE &rarr; OUTPUT</div>
+</div>
+
+<div id="controls">
+  <div class="agent-card" id="card-drums" style="--accent:#ff6b9d;--glow:rgba(255,107,157,0.25)">
+    <div class="agent-label">Agent 01</div>
+    <div class="agent-name"><span class="status-dot"></span>Drums</div>
+    <div class="slider-row"><label>Vol</label><input type="range" min="0" max="100" value="70" data-agent="drums" data-param="vol"></div>
+    <div class="slider-row"><label>Rate</label><input type="range" min="1" max="8" value="4" data-agent="drums" data-param="rate"></div>
+    <button class="toggle-btn" data-agent="drums">Activate</button>
+  </div>
+
+  <div class="agent-card" id="card-bass" style="--accent:#c084fc;--glow:rgba(192,132,252,0.25)">
+    <div class="agent-label">Agent 02</div>
+    <div class="agent-name"><span class="status-dot"></span>Bass</div>
+    <div class="slider-row"><label>Vol</label><input type="range" min="0" max="100" value="60" data-agent="bass" data-param="vol"></div>
+    <div class="slider-row"><label>Oct</label><input type="range" min="1" max="4" value="2" data-agent="bass" data-param="octave"></div>
+    <button class="toggle-btn" data-agent="bass">Activate</button>
+  </div>
+
+  <div class="agent-card" id="card-melody" style="--accent:#60a5fa;--glow:rgba(96,165,250,0.25)">
+    <div class="agent-label">Agent 03</div>
+    <div class="agent-name"><span class="status-dot"></span>Melody</div>
+    <div class="slider-row"><label>Vol</label><input type="range" min="0" max="100" value="50" data-agent="melody" data-param="vol"></div>
+    <div class="slider-row"><label>Len</label><input type="range" min="1" max="8" value="3" data-agent="melody" data-param="length"></div>
+    <button class="toggle-btn" data-agent="melody">Activate</button>
+  </div>
+
+  <div class="agent-card" id="card-ambient" style="--accent:#34d399;--glow:rgba(52,211,153,0.25)">
+    <div class="agent-label">Agent 04</div>
+    <div class="agent-name"><span class="status-dot"></span>Ambient</div>
+    <div class="slider-row"><label>Vol</label><input type="range" min="0" max="100" value="40" data-agent="ambient" data-param="vol"></div>
+    <div class="slider-row"><label>Mod</label><input type="range" min="1" max="10" value="3" data-agent="ambient" data-param="mod"></div>
+    <button class="toggle-btn" data-agent="ambient">Activate</button>
+  </div>
+
+  <div id="master">
+    <button id="play-btn" title="Play / Stop">&#9654;</button>
+    <div class="bpm-wrap">
+      <label>BPM</label><br>
+      <input id="bpm" type="number" value="120" min="60" max="200" step="1">
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Audio Context ───────────────────────────────────────────────
+let ctx;
+let masterGain;
+let isPlaying = false;
+let beatTimer = null;
+let beat = 0;
+
+const SCALES = {
+  minor: [0, 3, 5, 7, 10, 12, 15, 17, 19],
+  penta: [0, 3, 5, 7, 10, 12, 15, 17]
+};
+
+const agents = {
+  drums:   { active: false, vol: 0.7, rate: 4, gain: null, color: [255,107,157] },
+  bass:    { active: false, vol: 0.6, octave: 2, gain: null, color: [192,132,252] },
+  melody:  { active: false, vol: 0.5, length: 3, gain: null, color: [96,165,250] },
+  ambient: { active: false, vol: 0.4, mod: 3, gain: null, color: [52,211,153] }
+};
+
+// Visualization data
+const vizData = { drums: [], bass: [], melody: [], ambient: [] };
+const particles = [];
+
+function initAudio() {
+  ctx = new (window.AudioContext || window.webkitAudioContext)();
+  masterGain = ctx.createGain();
+  masterGain.gain.value = 0.6;
+  masterGain.connect(ctx.destination);
+
+  for (const key of Object.keys(agents)) {
+    agents[key].gain = ctx.createGain();
+    agents[key].gain.gain.value = agents[key].vol;
+    agents[key].gain.connect(masterGain);
+  }
+}
+
+// ─── Sound Generators (each agent runs independently) ────────────
+
+function playDrumHit(time, type) {
+  if (!agents.drums.active) return;
+  const g = ctx.createGain();
+  const o = ctx.createOscillator();
+
+  if (type === 'kick') {
+    o.frequency.setValueAtTime(150, time);
+    o.frequency.exponentialRampToValueAtTime(30, time + 0.15);
+    g.gain.setValueAtTime(1, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.2);
+    o.type = 'sine';
+    o.connect(g).connect(agents.drums.gain);
+    o.start(time); o.stop(time + 0.2);
+    vizData.drums.push({ t: performance.now(), intensity: 1, type: 'kick' });
+  } else if (type === 'snare') {
+    // Noise burst
+    const bufSize = ctx.sampleRate * 0.08;
+    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * 0.6;
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+    g.gain.setValueAtTime(0.7, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.1);
+    noise.connect(g).connect(agents.drums.gain);
+    noise.start(time); noise.stop(time + 0.1);
+    vizData.drums.push({ t: performance.now(), intensity: 0.7, type: 'snare' });
+  } else {
+    // Hi-hat
+    const bufSize = ctx.sampleRate * 0.03;
+    const buf = ctx.createBuffer(1, bufSize, ctx.sampleRate);
+    const data = buf.getChannelData(0);
+    for (let i = 0; i < bufSize; i++) data[i] = (Math.random() * 2 - 1) * 0.3;
+    const noise = ctx.createBufferSource();
+    noise.buffer = buf;
+    const hp = ctx.createBiquadFilter();
+    hp.type = 'highpass'; hp.frequency.value = 7000;
+    g.gain.setValueAtTime(0.3, time);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 0.04);
+    noise.connect(hp).connect(g).connect(agents.drums.gain);
+    noise.start(time); noise.stop(time + 0.05);
+    vizData.drums.push({ t: performance.now(), intensity: 0.3, type: 'hat' });
+  }
+}
+
+function playBassNote(time, noteIdx) {
+  if (!agents.bass.active) return;
+  const oct = agents.bass.octave;
+  const freq = 55 * Math.pow(2, oct - 1) * Math.pow(2, SCALES.minor[noteIdx % SCALES.minor.length] / 12);
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.type = 'sawtooth';
+  o.frequency.setValueAtTime(freq, time);
+  const lp = ctx.createBiquadFilter();
+  lp.type = 'lowpass'; lp.frequency.value = 400 + oct * 100;
+  g.gain.setValueAtTime(0.6, time);
+  g.gain.exponentialRampToValueAtTime(0.001, time + 0.3);
+  o.connect(lp).connect(g).connect(agents.bass.gain);
+  o.start(time); o.stop(time + 0.35);
+  vizData.bass.push({ t: performance.now(), freq, intensity: 0.6 });
+}
+
+function playMelodyNote(time, noteIdx) {
+  if (!agents.melody.active) return;
+  const freq = 440 * Math.pow(2, SCALES.penta[noteIdx % SCALES.penta.length] / 12);
+  const dur = 0.05 + agents.melody.length * 0.05;
+  const o = ctx.createOscillator();
+  const g = ctx.createGain();
+  o.type = 'triangle';
+  o.frequency.setValueAtTime(freq, time);
+  g.gain.setValueAtTime(0.4, time);
+  g.gain.setValueAtTime(0.4, time + dur * 0.6);
+  g.gain.exponentialRampToValueAtTime(0.001, time + dur);
+  o.connect(g).connect(agents.melody.gain);
+  o.start(time); o.stop(time + dur + 0.01);
+  vizData.melody.push({ t: performance.now(), freq, intensity: 0.4 });
+}
+
+function playAmbientPad(time) {
+  if (!agents.ambient.active) return;
+  const baseFreq = 220;
+  const modRate = agents.ambient.mod * 0.3;
+  for (let i = 0; i < 3; i++) {
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    const lfo = ctx.createOscillator();
+    const lfoGain = ctx.createGain();
+    o.type = 'sine';
+    o.frequency.value = baseFreq * (1 + i * 0.5);
+    lfo.frequency.value = modRate + i * 0.1;
+    lfoGain.gain.value = 5 + agents.ambient.mod;
+    lfo.connect(lfoGain).connect(o.frequency);
+    g.gain.setValueAtTime(0.08, time);
+    g.gain.setValueAtTime(0.08, time + 0.8);
+    g.gain.exponentialRampToValueAtTime(0.001, time + 1.5);
+    o.connect(g).connect(agents.ambient.gain);
+    o.start(time); o.stop(time + 1.6);
+    lfo.start(time); lfo.stop(time + 1.6);
+  }
+  vizData.ambient.push({ t: performance.now(), intensity: 0.3 });
+}
+
+// ─── Sequencer (dispatches to parallel agents) ───────────────────
+const drumPatterns = [
+  ['kick','hat','','hat','snare','hat','','hat'],
+  ['kick','','hat','','snare','','hat','kick'],
+  ['kick','hat','kick','hat','snare','hat','','hat']
+];
+let currentDrumPattern = 0;
+let melodySeq = [];
+let bassSeq = [];
+
+function generateSequences() {
+  melodySeq = Array.from({length: 16}, () => Math.floor(Math.random() * SCALES.penta.length));
+  bassSeq = Array.from({length: 8}, () => Math.floor(Math.random() * 5));
+  currentDrumPattern = Math.floor(Math.random() * drumPatterns.length);
+}
+
+function tick() {
+  const now = ctx.currentTime;
+  const rate = agents.drums.rate;
+  const dp = drumPatterns[currentDrumPattern];
+  const step = beat % dp.length;
+
+  // Agent 1: Drums (parallel)
+  if (dp[step]) playDrumHit(now, dp[step]);
+
+  // Agent 2: Bass (parallel, every 2 beats)
+  if (beat % 2 === 0) playBassNote(now, bassSeq[Math.floor(beat / 2) % bassSeq.length]);
+
+  // Agent 3: Melody (parallel)
+  playMelodyNote(now, melodySeq[beat % melodySeq.length]);
+
+  // Agent 4: Ambient (parallel, every 8 beats)
+  if (beat % 8 === 0) playAmbientPad(now);
+
+  // Spawn particles for active agents
+  for (const [key, a] of Object.entries(agents)) {
+    if (a.active && (key === 'drums' ? dp[step] : key === 'ambient' ? beat % 8 === 0 : true)) {
+      for (let i = 0; i < 2; i++) {
+        particles.push({
+          x: canvas.width * (0.15 + Object.keys(agents).indexOf(key) * 0.22) + (Math.random() - 0.5) * 60,
+          y: canvas.height * 0.5 + (Math.random() - 0.5) * 80,
+          vx: (Math.random() - 0.5) * 2,
+          vy: -1 - Math.random() * 2,
+          r: 2 + Math.random() * 3,
+          life: 1,
+          color: a.color,
+        });
+      }
+    }
+  }
+
+  beat++;
+  // Regenerate sequences every 64 beats for variety
+  if (beat % 64 === 0) generateSequences();
+}
+
+function startSequencer() {
+  const bpm = parseInt(document.getElementById('bpm').value) || 120;
+  const interval = (60 / bpm / 2) * 1000; // 8th notes
+  generateSequences();
+  beat = 0;
+  beatTimer = setInterval(tick, interval);
+}
+
+function stopSequencer() {
+  clearInterval(beatTimer);
+  beatTimer = null;
+  beat = 0;
+}
+
+// ─── Visualization ───────────────────────────────────────────────
+const canvas = document.getElementById('viz');
+const c = canvas.getContext('2d');
+let animFrame;
+
+function resizeCanvas() {
+  const wrap = document.getElementById('canvas-wrap');
+  canvas.width = wrap.clientWidth * devicePixelRatio;
+  canvas.height = wrap.clientHeight * devicePixelRatio;
+  c.scale(devicePixelRatio, devicePixelRatio);
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+function drawViz() {
+  const w = canvas.width / devicePixelRatio;
+  const h = canvas.height / devicePixelRatio;
+  const now = performance.now();
+
+  // Fade trail
+  c.fillStyle = 'rgba(10, 10, 15, 0.15)';
+  c.fillRect(0, 0, w, h);
+
+  // Grid lines (subtle)
+  c.strokeStyle = 'rgba(255,255,255,0.02)';
+  c.lineWidth = 1;
+  for (let y = 0; y < h; y += 40) {
+    c.beginPath(); c.moveTo(0, y); c.lineTo(w, y); c.stroke();
+  }
+
+  // Draw agent lanes with waveforms
+  const laneWidth = w / 4;
+  const agentKeys = Object.keys(agents);
+
+  for (let i = 0; i < agentKeys.length; i++) {
+    const key = agentKeys[i];
+    const a = agents[key];
+    const cx = laneWidth * i + laneWidth / 2;
+    const cy = h * 0.5;
+    const data = vizData[key];
+
+    // Clean old data
+    while (data.length > 0 && now - data[0].t > 2000) data.shift();
+
+    if (!a.active) {
+      // Dormant indicator
+      c.fillStyle = `rgba(${a.color.join(',')}, 0.05)`;
+      c.beginPath();
+      c.arc(cx, cy, 20, 0, Math.PI * 2);
+      c.fill();
+      continue;
+    }
+
+    // Pulsing ring per agent
+    const recentHit = data.length > 0 && now - data[data.length - 1].t < 200;
+    const pulseRadius = recentHit ? 30 + (200 - (now - data[data.length - 1].t)) / 200 * 40 : 30;
+    const alpha = recentHit ? 0.6 : 0.15;
+
+    c.strokeStyle = `rgba(${a.color.join(',')}, ${alpha})`;
+    c.lineWidth = 2;
+    c.beginPath();
+    c.arc(cx, cy, pulseRadius, 0, Math.PI * 2);
+    c.stroke();
+
+    // Radial wave
+    if (recentHit) {
+      const age = (now - data[data.length - 1].t) / 200;
+      c.strokeStyle = `rgba(${a.color.join(',')}, ${0.3 * (1 - age)})`;
+      c.lineWidth = 1;
+      c.beginPath();
+      c.arc(cx, cy, pulseRadius + age * 60, 0, Math.PI * 2);
+      c.stroke();
+    }
+
+    // Waveform trail
+    c.strokeStyle = `rgba(${a.color.join(',')}, 0.4)`;
+    c.lineWidth = 1.5;
+    c.beginPath();
+    for (let j = 0; j < data.length; j++) {
+      const age = (now - data[j].t) / 2000;
+      const x = cx + (Math.sin(j * 0.7 + now * 0.002) * laneWidth * 0.35 * (1 - age));
+      const y = cy - (1 - age) * h * 0.35 + Math.cos(j * 1.2) * 20;
+      if (j === 0) c.moveTo(x, y);
+      else c.lineTo(x, y);
+    }
+    c.stroke();
+
+    // Agent label at top
+    c.fillStyle = `rgba(${a.color.join(',')}, 0.5)`;
+    c.font = '10px system-ui';
+    c.textAlign = 'center';
+    c.fillText(key.toUpperCase(), cx, 20);
+
+    // Flow line from agent to merge point
+    c.strokeStyle = `rgba(${a.color.join(',')}, ${a.active ? 0.12 : 0.03})`;
+    c.lineWidth = 1;
+    c.beginPath();
+    c.moveTo(cx, cy + 50);
+    c.quadraticCurveTo(cx, h - 30, w / 2, h - 10);
+    c.stroke();
+  }
+
+  // Merge point (center bottom)
+  const mergeActive = agentKeys.some(k => agents[k].active);
+  if (mergeActive && isPlaying) {
+    const pulse = Math.sin(now * 0.005) * 0.3 + 0.5;
+    c.fillStyle = `rgba(192, 132, 252, ${pulse * 0.3})`;
+    c.beginPath();
+    c.arc(w / 2, h - 10, 8 + pulse * 4, 0, Math.PI * 2);
+    c.fill();
+    c.fillStyle = 'rgba(192,132,252,0.5)';
+    c.font = '8px system-ui';
+    c.textAlign = 'center';
+    c.fillText('MERGE', w / 2, h - 22);
+  }
+
+  // Particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.life -= 0.015;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    c.fillStyle = `rgba(${p.color.join(',')}, ${p.life * 0.6})`;
+    c.beginPath();
+    c.arc(p.x, p.y, p.r * p.life, 0, Math.PI * 2);
+    c.fill();
+  }
+
+  // Beat indicator
+  if (isPlaying) {
+    const bpm = parseInt(document.getElementById('bpm').value) || 120;
+    const beatPhase = (beat % 8) / 8;
+    c.fillStyle = `rgba(255,255,255,0.04)`;
+    c.fillRect(beatPhase * w - 2, 0, 4, h);
+  }
+
+  animFrame = requestAnimationFrame(drawViz);
+}
+
+// ─── UI Wiring ───────────────────────────────────────────────────
+
+document.querySelectorAll('.toggle-btn').forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (!ctx) initAudio();
+    const key = btn.dataset.agent;
+    agents[key].active = !agents[key].active;
+    const card = document.getElementById('card-' + key);
+    card.classList.toggle('active', agents[key].active);
+    btn.textContent = agents[key].active ? 'Deactivate' : 'Activate';
+  });
+});
+
+document.querySelectorAll('input[type="range"]').forEach(slider => {
+  slider.addEventListener('input', () => {
+    const key = slider.dataset.agent;
+    const param = slider.dataset.param;
+    const val = parseFloat(slider.value);
+    if (param === 'vol') {
+      agents[key].vol = val / 100;
+      if (agents[key].gain) agents[key].gain.gain.value = val / 100;
+    } else if (param === 'rate') {
+      agents[key].rate = val;
+    } else if (param === 'octave') {
+      agents[key].octave = val;
+    } else if (param === 'length') {
+      agents[key].length = val;
+    } else if (param === 'mod') {
+      agents[key].mod = val;
+    }
+  });
+});
+
+document.getElementById('play-btn').addEventListener('click', function() {
+  if (!ctx) initAudio();
+  if (isPlaying) {
+    stopSequencer();
+    isPlaying = false;
+    this.textContent = '\u25B6';
+    this.classList.remove('playing');
+  } else {
+    ctx.resume();
+    startSequencer();
+    isPlaying = true;
+    this.textContent = '\u25A0';
+    this.classList.add('playing');
+  }
+});
+
+document.getElementById('bpm').addEventListener('change', () => {
+  if (isPlaying) {
+    stopSequencer();
+    startSequencer();
+  }
+});
+
+// Start visualization loop
+drawViz();
+</script>
+</body>
+</html>

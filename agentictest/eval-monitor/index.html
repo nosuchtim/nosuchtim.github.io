@@ -1,0 +1,1185 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Performance Lab - Agent Music Monitoring Dashboard</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#0a0a12;color:#c8ccd4;font-family:'Segoe UI',system-ui,-apple-system,sans-serif;overflow:hidden;height:100vh;display:flex;flex-direction:column;}
+::-webkit-scrollbar{width:6px;}
+::-webkit-scrollbar-track{background:#12121e;}
+::-webkit-scrollbar-thumb{background:#2a2a3e;border-radius:3px;}
+
+/* TOP BAR */
+#topbar{display:flex;align-items:center;justify-content:space-between;padding:8px 18px;background:#0e0e1a;border-bottom:1px solid #1a1a2e;height:48px;flex-shrink:0;}
+#topbar .left{display:flex;align-items:center;gap:18px;}
+#topbar .title{font-size:15px;font-weight:700;color:#e0e0f0;letter-spacing:1px;}
+.health-dot{width:12px;height:12px;border-radius:50%;display:inline-block;margin-right:6px;animation:pulse 2s infinite;}
+@keyframes pulse{0%,100%{opacity:1;}50%{opacity:.5;}}
+.health-green{background:#00e676;box-shadow:0 0 8px #00e676;}
+.health-yellow{background:#ffc107;box-shadow:0 0 8px #ffc107;}
+.health-red{background:#ff1744;box-shadow:0 0 8px #ff1744;}
+.stat-item{font-size:12px;color:#8888aa;}
+.stat-item span{color:#bbc;font-weight:600;}
+
+/* MAIN LAYOUT */
+#main{display:flex;flex:1;overflow:hidden;}
+
+/* LEFT PANEL */
+#left-panel{width:260px;flex-shrink:0;background:#0c0c18;border-right:1px solid #1a1a2e;overflow-y:auto;padding:12px;}
+#left-panel h3{font-size:12px;text-transform:uppercase;letter-spacing:2px;color:#5566aa;margin-bottom:10px;}
+.agent-card{background:#12121e;border:1px solid #1e1e30;border-radius:8px;padding:12px;margin-bottom:10px;cursor:pointer;transition:border-color .2s;}
+.agent-card:hover{border-color:#3344aa;}
+.agent-card .agent-name{font-size:13px;font-weight:700;margin-bottom:6px;display:flex;align-items:center;gap:6px;}
+.agent-card .agent-name .dot{width:8px;height:8px;border-radius:50%;}
+.agent-card .metrics{display:grid;grid-template-columns:1fr 1fr;gap:4px;font-size:11px;color:#8888aa;}
+.agent-card .metrics .val{color:#ddd;font-weight:600;}
+.agent-card canvas.sparkline{width:100%;height:36px;margin-top:8px;border-radius:4px;background:#0a0a14;}
+.perf-bar{height:3px;border-radius:2px;margin-top:6px;background:#1a1a2e;}
+.perf-bar-inner{height:100%;border-radius:2px;transition:width .4s;}
+
+/* CENTER */
+#center{flex:1;display:flex;flex-direction:column;overflow:hidden;}
+#tabs{display:flex;background:#0c0c18;border-bottom:1px solid #1a1a2e;flex-shrink:0;}
+.tab{padding:10px 18px;font-size:12px;cursor:pointer;color:#6677aa;border-bottom:2px solid transparent;transition:all .2s;user-select:none;}
+.tab:hover{color:#aabbee;}
+.tab.active{color:#7788ee;border-bottom-color:#5566dd;}
+#tab-content{flex:1;position:relative;overflow:hidden;}
+.tab-pane{position:absolute;inset:0;padding:14px;overflow-y:auto;display:none;}
+.tab-pane.active{display:block;}
+
+/* RIGHT PANEL */
+#right-panel{width:280px;flex-shrink:0;background:#0c0c18;border-left:1px solid #1a1a2e;display:flex;flex-direction:column;}
+#right-panel h3{font-size:12px;text-transform:uppercase;letter-spacing:2px;color:#5566aa;padding:12px 12px 8px;}
+.alert-badges{display:flex;gap:6px;padding:0 12px 8px;}
+.badge{font-size:10px;padding:2px 8px;border-radius:10px;font-weight:700;}
+.badge-info{background:#1a2a4a;color:#4488cc;}
+.badge-warn{background:#3a2a0a;color:#ddaa22;}
+.badge-error{background:#3a0a0a;color:#ee4444;}
+.badge-critical{background:#4a0020;color:#ff4488;}
+#event-log{flex:1;overflow-y:auto;padding:0 12px;font-size:11px;font-family:'Consolas','Courier New',monospace;line-height:1.6;}
+.log-entry{padding:2px 0;border-bottom:1px solid #0e0e1a;word-break:break-word;}
+.log-INFO{color:#4488cc;}
+.log-WARN{color:#ddaa22;}
+.log-ERROR{color:#ee4444;}
+.log-CRITICAL{color:#ff4488;font-weight:700;}
+
+/* BOTTOM BAR */
+#bottombar{display:flex;align-items:center;gap:14px;padding:8px 18px;background:#0e0e1a;border-top:1px solid #1a1a2e;height:52px;flex-shrink:0;}
+button{background:#1a1a2e;color:#aabbdd;border:1px solid #2a2a44;border-radius:6px;padding:6px 14px;font-size:12px;cursor:pointer;transition:all .15s;font-family:inherit;}
+button:hover{background:#2a2a44;color:#dde;}
+button.primary{background:#3344aa;border-color:#4455bb;color:#fff;}
+button.primary:hover{background:#4455bb;}
+button.danger{background:#661122;border-color:#882244;color:#ffaacc;}
+button.danger:hover{background:#882244;}
+.speed-control{display:flex;align-items:center;gap:6px;font-size:12px;color:#8888aa;}
+.speed-control input{width:80px;}
+
+/* CANVAS charts */
+canvas.chart{width:100%;background:#0e0e1a;border-radius:6px;border:1px solid #1a1a2e;}
+
+/* Tab-specific */
+.metrics-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px;}
+.metric-box{background:#12121e;border:1px solid #1e1e30;border-radius:8px;padding:12px;}
+.metric-box h4{font-size:11px;text-transform:uppercase;color:#5566aa;margin-bottom:8px;letter-spacing:1px;}
+
+/* Trajectory */
+.trajectory-container{display:flex;gap:12px;}
+.trajectory-panel{flex:1;background:#12121e;border:1px solid #1e1e30;border-radius:8px;padding:12px;overflow:hidden;}
+.trajectory-panel h4{font-size:11px;text-transform:uppercase;color:#5566aa;margin-bottom:8px;letter-spacing:1px;}
+.traj-match{text-align:center;font-size:28px;font-weight:700;color:#7788ee;margin:10px 0;}
+
+/* A/B */
+.ab-container{display:flex;gap:12px;}
+.ab-panel{flex:1;background:#12121e;border:1px solid #1e1e30;border-radius:8px;padding:12px;}
+.ab-panel h4{font-size:13px;margin-bottom:8px;display:flex;align-items:center;gap:6px;}
+.ab-score{font-size:32px;font-weight:700;text-align:center;margin:8px 0;}
+.vote-btn{width:100%;margin-top:8px;padding:10px;font-size:13px;}
+.vote-count{text-align:center;font-size:12px;color:#8888aa;margin-top:6px;}
+
+/* Drift */
+.drift-alert{background:#3a0a0a;border:1px solid #662222;border-radius:8px;padding:12px;margin-bottom:12px;display:none;color:#ff6666;}
+.drift-alert.visible{display:block;}
+
+/* Sliders */
+.threshold-group{display:flex;flex-direction:column;gap:8px;margin-top:12px;background:#12121e;border:1px solid #1e1e30;border-radius:8px;padding:12px;}
+.threshold-group label{font-size:11px;color:#8888aa;display:flex;justify-content:space-between;}
+.threshold-group input[type=range]{width:100%;accent-color:#5566dd;}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.7);display:none;align-items:center;justify-content:center;z-index:1000;}
+.modal-overlay.open{display:flex;}
+.modal{background:#12121e;border:1px solid #2a2a44;border-radius:12px;padding:24px;width:600px;max-height:80vh;overflow-y:auto;}
+.modal h2{font-size:16px;color:#aabbee;margin-bottom:14px;}
+.modal table{width:100%;border-collapse:collapse;font-size:12px;}
+.modal td,.modal th{padding:6px 10px;border-bottom:1px solid #1a1a2e;text-align:left;}
+.modal th{color:#5566aa;text-transform:uppercase;font-size:10px;letter-spacing:1px;}
+.modal .close-btn{float:right;background:none;border:none;color:#8888aa;font-size:18px;cursor:pointer;}
+</style>
+</head>
+<body>
+
+<!-- TOP BAR -->
+<div id="topbar">
+  <div class="left">
+    <div class="title">PERFORMANCE LAB</div>
+    <div style="display:flex;align-items:center;"><span id="health-dot" class="health-dot health-green"></span><span id="health-text" style="font-size:12px;color:#8a8">Healthy</span></div>
+  </div>
+  <div style="display:flex;gap:24px;">
+    <div class="stat-item">Uptime: <span id="uptime">00:00:00</span></div>
+    <div class="stat-item">Generation: <span id="gen-count">0</span></div>
+    <div class="stat-item">Active Agents: <span id="active-agents">3/3</span></div>
+    <div class="stat-item">System Score: <span id="sys-score">0%</span></div>
+  </div>
+</div>
+
+<!-- MAIN -->
+<div id="main">
+  <!-- LEFT PANEL -->
+  <div id="left-panel">
+    <h3>Agent Performance</h3>
+    <div class="agent-card" id="card-melody">
+      <div class="agent-name"><span class="dot" id="dot-melody"></span>Melody Agent</div>
+      <div class="metrics">
+        <div>Accuracy: <span class="val" id="melody-acc">0%</span></div>
+        <div>Notes: <span class="val" id="melody-notes">0</span></div>
+        <div>Error Rate: <span class="val" id="melody-err">0%</span></div>
+        <div>Status: <span class="val" id="melody-status">Idle</span></div>
+      </div>
+      <canvas class="sparkline" id="spark-melody" height="36"></canvas>
+      <div class="perf-bar"><div class="perf-bar-inner" id="bar-melody" style="width:0%;background:#00e676;"></div></div>
+    </div>
+    <div class="agent-card" id="card-rhythm">
+      <div class="agent-name"><span class="dot" id="dot-rhythm"></span>Rhythm Agent</div>
+      <div class="metrics">
+        <div>Precision: <span class="val" id="rhythm-prec">0%</span></div>
+        <div>Diversity: <span class="val" id="rhythm-div">0</span></div>
+        <div>Error Rate: <span class="val" id="rhythm-err">0%</span></div>
+        <div>Status: <span class="val" id="rhythm-status">Idle</span></div>
+      </div>
+      <canvas class="sparkline" id="spark-rhythm" height="36"></canvas>
+      <div class="perf-bar"><div class="perf-bar-inner" id="bar-rhythm" style="width:0%;background:#00e676;"></div></div>
+    </div>
+    <div class="agent-card" id="card-harmony">
+      <div class="agent-name"><span class="dot" id="dot-harmony"></span>Harmony Agent</div>
+      <div class="metrics">
+        <div>Consonance: <span class="val" id="harmony-con">0%</span></div>
+        <div>Quality: <span class="val" id="harmony-qual">0</span></div>
+        <div>Error Rate: <span class="val" id="harmony-err">0%</span></div>
+        <div>Status: <span class="val" id="harmony-status">Idle</span></div>
+      </div>
+      <canvas class="sparkline" id="spark-harmony" height="36"></canvas>
+      <div class="perf-bar"><div class="perf-bar-inner" id="bar-harmony" style="width:0%;background:#00e676;"></div></div>
+    </div>
+
+    <div class="threshold-group">
+      <h3 style="margin-bottom:6px;">Alert Thresholds</h3>
+      <label>Warning: <span id="thresh-warn-val">65%</span></label>
+      <input type="range" id="thresh-warn" min="30" max="90" value="65">
+      <label>Error: <span id="thresh-err-val">45%</span></label>
+      <input type="range" id="thresh-err" min="10" max="70" value="45">
+      <label>Drift Limit: <span id="thresh-drift-val">20</span></label>
+      <input type="range" id="thresh-drift" min="5" max="50" value="20">
+    </div>
+  </div>
+
+  <!-- CENTER -->
+  <div id="center">
+    <div id="tabs">
+      <div class="tab active" data-tab="live">Live Metrics</div>
+      <div class="tab" data-tab="trajectory">Trajectory Analysis</div>
+      <div class="tab" data-tab="ab">A/B Comparison</div>
+      <div class="tab" data-tab="drift">Drift Detection</div>
+    </div>
+    <div id="tab-content">
+      <!-- Live Metrics -->
+      <div class="tab-pane active" id="pane-live">
+        <div class="metrics-grid">
+          <div class="metric-box"><h4>Melody Accuracy</h4><canvas class="chart" id="chart-melody" height="140"></canvas></div>
+          <div class="metric-box"><h4>Rhythm Precision</h4><canvas class="chart" id="chart-rhythm" height="140"></canvas></div>
+          <div class="metric-box"><h4>Harmony Quality</h4><canvas class="chart" id="chart-harmony" height="140"></canvas></div>
+          <div class="metric-box"><h4>Combined System Score</h4><canvas class="chart" id="chart-system" height="140"></canvas></div>
+        </div>
+      </div>
+      <!-- Trajectory -->
+      <div class="tab-pane" id="pane-trajectory">
+        <div class="traj-match">Trajectory Match: <span id="traj-pct">0%</span></div>
+        <div class="trajectory-container">
+          <div class="trajectory-panel"><h4>Expected (Ideal Path)</h4><canvas id="traj-expected" class="chart" height="200"></canvas></div>
+          <div class="trajectory-panel"><h4>Actual (Agent Output)</h4><canvas id="traj-actual" class="chart" height="200"></canvas></div>
+        </div>
+        <div style="margin-top:12px;"><div class="trajectory-panel"><h4>Difference Map</h4><canvas id="traj-diff" class="chart" height="120"></canvas></div></div>
+      </div>
+      <!-- A/B -->
+      <div class="tab-pane" id="pane-ab">
+        <div class="ab-container">
+          <div class="ab-panel">
+            <h4><span class="dot" style="background:#4488cc;width:8px;height:8px;border-radius:50%;display:inline-block;"></span> Agent A: Conservative</h4>
+            <div class="ab-score" id="ab-a-score" style="color:#4488cc;">0</div>
+            <canvas class="chart" id="chart-ab-a" height="120"></canvas>
+            <button class="vote-btn" id="vote-a">Vote for A</button>
+            <div class="vote-count">Votes: <span id="votes-a">0</span></div>
+          </div>
+          <div class="ab-panel">
+            <h4><span class="dot" style="background:#ee6644;width:8px;height:8px;border-radius:50%;display:inline-block;"></span> Agent B: Adventurous</h4>
+            <div class="ab-score" id="ab-b-score" style="color:#ee6644;">0</div>
+            <canvas class="chart" id="chart-ab-b" height="120"></canvas>
+            <button class="vote-btn" id="vote-b">Vote for B</button>
+            <div class="vote-count">Votes: <span id="votes-b">0</span></div>
+          </div>
+        </div>
+        <div style="margin-top:12px;text-align:center;font-size:12px;color:#8888aa;">Listen and vote for which agent produces better music. Scores update each generation.</div>
+      </div>
+      <!-- Drift -->
+      <div class="tab-pane" id="pane-drift">
+        <div class="drift-alert" id="drift-alert">ALERT: Drift threshold exceeded! Agent performance has degraded significantly. Consider re-calibration.</div>
+        <div class="metric-box"><h4>Drift Over Time (Deviation from Baseline)</h4><canvas class="chart" id="chart-drift" height="200"></canvas></div>
+        <div style="display:flex;gap:12px;margin-top:12px;">
+          <div class="metric-box" style="flex:1;"><h4>Melody Drift</h4><div style="font-size:28px;font-weight:700;text-align:center;" id="drift-melody">0.0</div></div>
+          <div class="metric-box" style="flex:1;"><h4>Rhythm Drift</h4><div style="font-size:28px;font-weight:700;text-align:center;" id="drift-rhythm">0.0</div></div>
+          <div class="metric-box" style="flex:1;"><h4>Harmony Drift</h4><div style="font-size:28px;font-weight:700;text-align:center;" id="drift-harmony">0.0</div></div>
+        </div>
+        <div style="margin-top:12px;display:flex;gap:10px;">
+          <button class="primary" id="btn-recalibrate">Re-calibrate All Agents</button>
+          <button id="btn-recal-melody">Reset Melody</button>
+          <button id="btn-recal-rhythm">Reset Rhythm</button>
+          <button id="btn-recal-harmony">Reset Harmony</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- RIGHT PANEL -->
+  <div id="right-panel">
+    <h3>Event Log</h3>
+    <div class="alert-badges">
+      <span class="badge badge-info">INFO <span id="cnt-info">0</span></span>
+      <span class="badge badge-warn">WARN <span id="cnt-warn">0</span></span>
+      <span class="badge badge-error">ERR <span id="cnt-error">0</span></span>
+      <span class="badge badge-critical">CRIT <span id="cnt-critical">0</span></span>
+    </div>
+    <div id="event-log"></div>
+  </div>
+</div>
+
+<!-- BOTTOM BAR -->
+<div id="bottombar">
+  <button class="primary" id="btn-play">&#9654; Play</button>
+  <button id="btn-step">Step</button>
+  <button class="danger" id="btn-anomaly">Inject Anomaly</button>
+  <button id="btn-report">Export Report</button>
+  <div class="speed-control">
+    <span>Speed:</span>
+    <input type="range" id="speed" min="1" max="10" value="4">
+    <span id="speed-val">4x</span>
+  </div>
+  <div style="flex:1;"></div>
+  <div style="font-size:11px;color:#555;">Performance Lab v1.0 | Web Audio API</div>
+</div>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal" id="modal">
+    <button class="close-btn" id="modal-close">&times;</button>
+    <h2>Performance Report</h2>
+    <div id="modal-content"></div>
+  </div>
+</div>
+
+<script>
+// ===== STATE =====
+const STATE = {
+  running: false,
+  generation: 0,
+  startTime: Date.now(),
+  speed: 4,
+  thresholds: { warn: 65, error: 45, drift: 20 },
+  logCounts: { INFO: 0, WARN: 0, ERROR: 0, CRITICAL: 0 },
+  votes: { a: 0, b: 0 },
+  anomalyActive: false,
+  anomalyTarget: null,
+  audioCtx: null,
+  masterGain: null,
+};
+
+// Scale: C major pentatonic for melody
+const SCALE = [261.63, 293.66, 329.63, 392.00, 440.00, 523.25, 587.33, 659.25];
+const CHORD_SETS = [
+  [261.63, 329.63, 392.00],       // C
+  [293.66, 369.99, 440.00],       // Dm
+  [329.63, 415.30, 493.88],       // Em
+  [349.23, 440.00, 523.25],       // F
+  [392.00, 493.88, 587.33],       // G
+  [440.00, 523.25, 659.25],       // Am
+];
+
+// Agent data
+const agents = {
+  melody: { score: 85, scores: [], notesGen: 0, errorRate: 0, drift: 0, baseline: 85, status: 'Idle' },
+  rhythm: { score: 82, scores: [], precision: 82, diversity: 50, errorRate: 0, drift: 0, baseline: 82, status: 'Idle' },
+  harmony: { score: 88, scores: [], consonance: 88, quality: 60, errorRate: 0, drift: 0, baseline: 88, status: 'Idle' },
+};
+
+// Chart history (up to 60 points)
+const chartHistory = { melody: [], rhythm: [], harmony: [], system: [], driftM: [], driftR: [], driftH: [] };
+const MAX_HISTORY = 60;
+
+// A/B data
+const abData = { a: { scores: [], current: 0 }, b: { scores: [], current: 0 } };
+
+// Trajectory data
+let trajExpected = [];
+let trajActual = [];
+
+// ===== AUDIO =====
+function initAudio() {
+  if (STATE.audioCtx) return;
+  STATE.audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  STATE.masterGain = STATE.audioCtx.createGain();
+  STATE.masterGain.gain.value = 0.3;
+  STATE.masterGain.connect(STATE.audioCtx.destination);
+}
+
+function playNote(freq, duration, type = 'sine', gainVal = 0.15) {
+  if (!STATE.audioCtx) return;
+  const ctx = STATE.audioCtx;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.type = type;
+  osc.frequency.value = freq;
+  gain.gain.setValueAtTime(gainVal, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+  osc.connect(gain);
+  gain.connect(STATE.masterGain);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + duration);
+}
+
+function playKick() {
+  if (!STATE.audioCtx) return;
+  const ctx = STATE.audioCtx;
+  const osc = ctx.createOscillator();
+  const gain = ctx.createGain();
+  osc.frequency.setValueAtTime(150, ctx.currentTime);
+  osc.frequency.exponentialRampToValueAtTime(40, ctx.currentTime + 0.12);
+  gain.gain.setValueAtTime(0.4, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.15);
+  osc.connect(gain);
+  gain.connect(STATE.masterGain);
+  osc.start(ctx.currentTime);
+  osc.stop(ctx.currentTime + 0.15);
+}
+
+function playSnare() {
+  if (!STATE.audioCtx) return;
+  const ctx = STATE.audioCtx;
+  const bufferSize = ctx.sampleRate * 0.1;
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.2, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.1);
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'highpass';
+  filter.frequency.value = 1000;
+  src.connect(filter);
+  filter.connect(gain);
+  gain.connect(STATE.masterGain);
+  src.start(ctx.currentTime);
+}
+
+function playHiHat() {
+  if (!STATE.audioCtx) return;
+  const ctx = STATE.audioCtx;
+  const bufferSize = ctx.sampleRate * 0.04;
+  const buffer = ctx.createBuffer(1, bufferSize, ctx.sampleRate);
+  const data = buffer.getChannelData(0);
+  for (let i = 0; i < bufferSize; i++) data[i] = Math.random() * 2 - 1;
+  const src = ctx.createBufferSource();
+  src.buffer = buffer;
+  const gain = ctx.createGain();
+  gain.gain.setValueAtTime(0.08, ctx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.04);
+  const filter = ctx.createBiquadFilter();
+  filter.type = 'highpass';
+  filter.frequency.value = 5000;
+  src.connect(filter);
+  filter.connect(gain);
+  gain.connect(STATE.masterGain);
+  src.start(ctx.currentTime);
+}
+
+function playChord(freqs, duration = 0.6) {
+  freqs.forEach(f => playNote(f, duration, 'triangle', 0.06));
+}
+
+// ===== GENERATION ENGINE =====
+function generateMelody() {
+  const a = agents.melody;
+  a.status = 'Generating';
+  const isAnomaly = STATE.anomalyActive && STATE.anomalyTarget === 'melody';
+  const errorChance = isAnomaly ? 0.5 : 0.08 + a.drift * 0.003;
+  const hasError = Math.random() < errorChance;
+
+  if (hasError) {
+    const wrongFreq = 200 + Math.random() * 600;
+    playNote(wrongFreq, 0.2, 'sawtooth', 0.1);
+    a.errorRate = Math.min(100, a.errorRate + 5);
+    a.score = Math.max(5, a.score - (3 + Math.random() * 8));
+  } else {
+    const note = SCALE[Math.floor(Math.random() * SCALE.length)];
+    playNote(note, 0.25, 'sine', 0.12);
+    a.errorRate = Math.max(0, a.errorRate - 1);
+    a.score = Math.min(100, a.score + (Math.random() * 2 - 0.3));
+  }
+  a.notesGen++;
+  a.drift = Math.abs(a.score - a.baseline);
+  a.scores.push(a.score);
+  if (a.scores.length > 20) a.scores.shift();
+  a.status = 'Active';
+}
+
+function generateRhythm() {
+  const a = agents.rhythm;
+  a.status = 'Generating';
+  const isAnomaly = STATE.anomalyActive && STATE.anomalyTarget === 'rhythm';
+  const errorChance = isAnomaly ? 0.5 : 0.1 + a.drift * 0.003;
+  const hasError = Math.random() < errorChance;
+
+  const beat = STATE.generation % 4;
+  if (hasError) {
+    // Wrong timing or missed beat
+    if (Math.random() > 0.5) playHiHat();
+    a.precision = Math.max(5, a.precision - (3 + Math.random() * 7));
+    a.errorRate = Math.min(100, a.errorRate + 4);
+  } else {
+    if (beat === 0) playKick();
+    else if (beat === 2) playSnare();
+    else playHiHat();
+    a.precision = Math.min(100, a.precision + (Math.random() * 2 - 0.2));
+    a.errorRate = Math.max(0, a.errorRate - 1);
+  }
+  a.diversity = 30 + Math.random() * 50;
+  a.score = a.precision;
+  a.drift = Math.abs(a.score - a.baseline);
+  a.scores.push(a.score);
+  if (a.scores.length > 20) a.scores.shift();
+  a.status = 'Active';
+}
+
+function generateHarmony() {
+  const a = agents.harmony;
+  a.status = 'Generating';
+  const isAnomaly = STATE.anomalyActive && STATE.anomalyTarget === 'harmony';
+  const errorChance = isAnomaly ? 0.5 : 0.06 + a.drift * 0.003;
+  const hasError = Math.random() < errorChance;
+
+  if (STATE.generation % 4 !== 0) { a.status = 'Waiting'; return; }
+
+  if (hasError) {
+    const badChord = [200 + Math.random() * 300, 250 + Math.random() * 300, 300 + Math.random() * 300];
+    playChord(badChord, 0.8);
+    a.consonance = Math.max(5, a.consonance - (4 + Math.random() * 10));
+    a.errorRate = Math.min(100, a.errorRate + 6);
+  } else {
+    const chord = CHORD_SETS[Math.floor(Math.random() * CHORD_SETS.length)];
+    playChord(chord, 0.8);
+    a.consonance = Math.min(100, a.consonance + (Math.random() * 2.5 - 0.3));
+    a.errorRate = Math.max(0, a.errorRate - 1.5);
+  }
+  a.quality = 20 + a.consonance * 0.7;
+  a.score = a.consonance;
+  a.drift = Math.abs(a.score - a.baseline);
+  a.scores.push(a.score);
+  if (a.scores.length > 20) a.scores.shift();
+  a.status = 'Active';
+}
+
+// A/B Generation
+function generateAB() {
+  // Agent A: Conservative - pentatonic, simple
+  const noteA = SCALE[Math.floor(Math.random() * 5)];
+  const scoreA = 70 + Math.random() * 25;
+  abData.a.current = Math.round(scoreA);
+  abData.a.scores.push(scoreA);
+  if (abData.a.scores.length > 30) abData.a.scores.shift();
+
+  // Agent B: Adventurous - chromatic, wider range
+  const noteB = 220 + Math.random() * 660;
+  const scoreB = 40 + Math.random() * 55;
+  abData.b.current = Math.round(scoreB);
+  abData.b.scores.push(scoreB);
+  if (abData.b.scores.length > 30) abData.b.scores.shift();
+}
+
+// Trajectory
+function generateTrajectory() {
+  if (STATE.generation % 8 !== 0) return;
+  trajExpected = [];
+  trajActual = [];
+  for (let i = 0; i < 16; i++) {
+    const ideal = Math.floor(Math.random() * 8);
+    trajExpected.push(ideal);
+    const drift = (STATE.anomalyActive && STATE.anomalyTarget === 'melody') ? 3 : 1;
+    const actual = Math.random() < 0.75 ? ideal : Math.min(7, Math.max(0, ideal + Math.floor(Math.random() * drift * 2) - drift));
+    trajActual.push(actual);
+  }
+}
+
+// ===== LOGGING =====
+function log(level, msg) {
+  STATE.logCounts[level]++;
+  const el = document.getElementById('event-log');
+  const time = new Date().toLocaleTimeString();
+  const entry = document.createElement('div');
+  entry.className = `log-entry log-${level}`;
+  entry.textContent = `[${time}] [${level}] ${msg}`;
+  el.prepend(entry);
+  // Limit log entries
+  while (el.children.length > 150) el.removeChild(el.lastChild);
+  // Update badges
+  document.getElementById('cnt-info').textContent = STATE.logCounts.INFO;
+  document.getElementById('cnt-warn').textContent = STATE.logCounts.WARN;
+  document.getElementById('cnt-error').textContent = STATE.logCounts.ERROR;
+  document.getElementById('cnt-critical').textContent = STATE.logCounts.CRITICAL;
+}
+
+function evaluateAndLog() {
+  const { warn, error: errT } = STATE.thresholds;
+  const am = agents.melody, ar = agents.rhythm, ah = agents.harmony;
+
+  log('INFO', `Melody Agent: Gen ${STATE.generation}, score: ${am.score.toFixed(1)}%`);
+  log('INFO', `Rhythm Agent: Gen ${STATE.generation}, precision: ${ar.precision.toFixed(1)}%`);
+
+  if (am.score < errT) log('ERROR', `Melody Agent quality critical: ${am.score.toFixed(1)}%`);
+  else if (am.score < warn) log('WARN', `Melody Agent accuracy dropped to ${am.score.toFixed(1)}%`);
+
+  if (ar.precision < errT) log('ERROR', `Rhythm Agent precision critical: ${ar.precision.toFixed(1)}%`);
+  else if (ar.precision < warn) log('WARN', `Rhythm Agent precision dropped to ${ar.precision.toFixed(1)}%`);
+
+  if (ah.consonance < errT) log('ERROR', `Harmony Agent consonance critical: ${ah.consonance.toFixed(1)}%`);
+  else if (ah.consonance < warn) log('WARN', `Harmony Agent consonance dropped to ${ah.consonance.toFixed(1)}%`);
+
+  const maxDrift = Math.max(am.drift, ar.drift, ah.drift);
+  if (maxDrift > STATE.thresholds.drift) {
+    log('CRITICAL', `Drift detected: Max deviation ${maxDrift.toFixed(1)} exceeds threshold ${STATE.thresholds.drift}`);
+  }
+}
+
+// ===== STEP =====
+function step() {
+  STATE.generation++;
+  initAudio();
+  generateMelody();
+  generateRhythm();
+  generateHarmony();
+  generateAB();
+  generateTrajectory();
+
+  // Push chart history
+  const sysScore = (agents.melody.score + agents.rhythm.score + agents.harmony.score) / 3;
+  pushHistory('melody', agents.melody.score);
+  pushHistory('rhythm', agents.rhythm.score);
+  pushHistory('harmony', agents.harmony.score);
+  pushHistory('system', sysScore);
+  pushHistory('driftM', agents.melody.drift);
+  pushHistory('driftR', agents.rhythm.drift);
+  pushHistory('driftH', agents.harmony.drift);
+
+  evaluateAndLog();
+  updateUI();
+
+  // Anomaly auto-clear after 10 gens
+  if (STATE.anomalyActive) {
+    STATE.anomalyCounter = (STATE.anomalyCounter || 0) + 1;
+    if (STATE.anomalyCounter > 12) {
+      STATE.anomalyActive = false;
+      STATE.anomalyTarget = null;
+      STATE.anomalyCounter = 0;
+      log('INFO', 'Anomaly injection expired.');
+    }
+  }
+}
+
+function pushHistory(key, val) {
+  chartHistory[key].push(val);
+  if (chartHistory[key].length > MAX_HISTORY) chartHistory[key].shift();
+}
+
+// ===== UI UPDATE =====
+function updateUI() {
+  const am = agents.melody, ar = agents.rhythm, ah = agents.harmony;
+  const sysScore = (am.score + ar.score + ah.score) / 3;
+
+  // Top bar
+  document.getElementById('gen-count').textContent = STATE.generation;
+  document.getElementById('sys-score').textContent = sysScore.toFixed(1) + '%';
+
+  const hd = document.getElementById('health-dot');
+  const ht = document.getElementById('health-text');
+  if (sysScore > 70) { hd.className = 'health-dot health-green'; ht.textContent = 'Healthy'; ht.style.color = '#8a8'; }
+  else if (sysScore > 45) { hd.className = 'health-dot health-yellow'; ht.textContent = 'Degraded'; ht.style.color = '#aa8'; }
+  else { hd.className = 'health-dot health-red'; ht.textContent = 'Critical'; ht.style.color = '#a88'; }
+
+  // Agent cards
+  updateAgentCard('melody', am.score, { acc: am.score, notes: am.notesGen, err: am.errorRate, status: am.status });
+  updateAgentCard('rhythm', ar.score, { prec: ar.precision, div: ar.diversity, err: ar.errorRate, status: ar.status });
+  updateAgentCard('harmony', ah.score, { con: ah.consonance, qual: ah.quality, err: ah.errorRate, status: ah.status });
+
+  // Sparklines
+  drawSparkline('spark-melody', am.scores);
+  drawSparkline('spark-rhythm', ar.scores);
+  drawSparkline('spark-harmony', ah.scores);
+
+  // Charts
+  drawChart('chart-melody', chartHistory.melody, '#4488ee', 80);
+  drawChart('chart-rhythm', chartHistory.rhythm, '#44cc88', 75);
+  drawChart('chart-harmony', chartHistory.harmony, '#cc88ee', 80);
+  drawSystemChart();
+
+  // Trajectory
+  drawTrajectory();
+
+  // A/B
+  document.getElementById('ab-a-score').textContent = abData.a.current;
+  document.getElementById('ab-b-score').textContent = abData.b.current;
+  drawChart('chart-ab-a', abData.a.scores, '#4488cc', null);
+  drawChart('chart-ab-b', abData.b.scores, '#ee6644', null);
+
+  // Drift
+  drawDriftChart();
+  document.getElementById('drift-melody').textContent = am.drift.toFixed(1);
+  document.getElementById('drift-melody').style.color = am.drift > STATE.thresholds.drift ? '#ff4444' : '#7788ee';
+  document.getElementById('drift-rhythm').textContent = ar.drift.toFixed(1);
+  document.getElementById('drift-rhythm').style.color = ar.drift > STATE.thresholds.drift ? '#ff4444' : '#7788ee';
+  document.getElementById('drift-harmony').textContent = ah.drift.toFixed(1);
+  document.getElementById('drift-harmony').style.color = ah.drift > STATE.thresholds.drift ? '#ff4444' : '#7788ee';
+
+  const maxDrift = Math.max(am.drift, ar.drift, ah.drift);
+  const driftAlert = document.getElementById('drift-alert');
+  if (maxDrift > STATE.thresholds.drift) driftAlert.classList.add('visible');
+  else driftAlert.classList.remove('visible');
+}
+
+function updateAgentCard(name, score, data) {
+  const dot = document.getElementById(`dot-${name}`);
+  const bar = document.getElementById(`bar-${name}`);
+  const color = score > 80 ? '#00e676' : score > 50 ? '#ffc107' : '#ff1744';
+  dot.style.background = color;
+  dot.style.boxShadow = `0 0 6px ${color}`;
+  bar.style.width = score + '%';
+  bar.style.background = color;
+
+  if (name === 'melody') {
+    document.getElementById('melody-acc').textContent = data.acc.toFixed(1) + '%';
+    document.getElementById('melody-notes').textContent = data.notes;
+    document.getElementById('melody-err').textContent = data.err.toFixed(1) + '%';
+    document.getElementById('melody-status').textContent = data.status;
+  } else if (name === 'rhythm') {
+    document.getElementById('rhythm-prec').textContent = data.prec.toFixed(1) + '%';
+    document.getElementById('rhythm-div').textContent = data.div.toFixed(0);
+    document.getElementById('rhythm-err').textContent = data.err.toFixed(1) + '%';
+    document.getElementById('rhythm-status').textContent = data.status;
+  } else {
+    document.getElementById('harmony-con').textContent = data.con.toFixed(1) + '%';
+    document.getElementById('harmony-qual').textContent = data.qual.toFixed(0);
+    document.getElementById('harmony-err').textContent = data.err.toFixed(1) + '%';
+    document.getElementById('harmony-status').textContent = data.status;
+  }
+}
+
+// ===== DRAWING =====
+function drawSparkline(id, data) {
+  const canvas = document.getElementById(id);
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width = canvas.offsetWidth * 2;
+  const h = canvas.height = 72;
+  ctx.clearRect(0, 0, w, h);
+  if (data.length < 2) return;
+
+  ctx.beginPath();
+  ctx.strokeStyle = '#3355aa';
+  ctx.lineWidth = 2;
+  const step = w / (data.length - 1);
+  data.forEach((v, i) => {
+    const x = i * step;
+    const y = h - (v / 100) * h;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Fill under
+  const last = data.length - 1;
+  ctx.lineTo(last * step, h);
+  ctx.lineTo(0, h);
+  ctx.closePath();
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, 'rgba(50,80,180,0.3)');
+  grad.addColorStop(1, 'rgba(50,80,180,0.02)');
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Current value dot
+  const lastVal = data[data.length - 1];
+  const color = lastVal > 80 ? '#00e676' : lastVal > 50 ? '#ffc107' : '#ff1744';
+  ctx.beginPath();
+  ctx.arc(last * step, h - (lastVal / 100) * h, 4, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+}
+
+function drawChart(id, data, color, targetLine) {
+  const canvas = document.getElementById(id);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = 2;
+  const w = canvas.width = canvas.offsetWidth * dpr;
+  const h = canvas.height = canvas.offsetHeight * dpr;
+  ctx.clearRect(0, 0, w, h);
+
+  // Grid
+  ctx.strokeStyle = '#1a1a2e';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = (h / 4) * i;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+  }
+
+  // Target line
+  if (targetLine != null) {
+    ctx.setLineDash([6, 4]);
+    ctx.strokeStyle = '#4a4a6e';
+    ctx.lineWidth = 2;
+    const ty = h - (targetLine / 100) * h;
+    ctx.beginPath(); ctx.moveTo(0, ty); ctx.lineTo(w, ty); ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#4a4a6e';
+    ctx.font = `${10 * dpr}px sans-serif`;
+    ctx.fillText(`Target: ${targetLine}%`, 6, ty - 4);
+  }
+
+  if (data.length < 2) return;
+
+  // Data line
+  ctx.beginPath();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2.5;
+  const step = w / (data.length - 1);
+  data.forEach((v, i) => {
+    const x = i * step;
+    const y = h - (v / 100) * h;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.stroke();
+
+  // Fill gradient
+  const lastIdx = data.length - 1;
+  ctx.lineTo(lastIdx * step, h);
+  ctx.lineTo(0, h);
+  ctx.closePath();
+  const grad = ctx.createLinearGradient(0, 0, 0, h);
+  grad.addColorStop(0, color + '30');
+  grad.addColorStop(1, color + '05');
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Anomaly markers (below threshold)
+  const threshold = STATE.thresholds.error;
+  data.forEach((v, i) => {
+    if (v < threshold) {
+      const x = i * step;
+      const y = h - (v / 100) * h;
+      ctx.beginPath();
+      ctx.arc(x, y, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#ff1744';
+      ctx.fill();
+      ctx.beginPath();
+      ctx.arc(x, y, 8, 0, Math.PI * 2);
+      ctx.strokeStyle = '#ff174488';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+  });
+}
+
+function drawSystemChart() {
+  const canvas = document.getElementById('chart-system');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = 2;
+  const w = canvas.width = canvas.offsetWidth * dpr;
+  const h = canvas.height = canvas.offsetHeight * dpr;
+  ctx.clearRect(0, 0, w, h);
+
+  // Grid
+  ctx.strokeStyle = '#1a1a2e';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 4; i++) {
+    const y = (h / 4) * i;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+  }
+
+  // Target
+  ctx.setLineDash([6, 4]);
+  ctx.strokeStyle = '#4a4a6e';
+  ctx.lineWidth = 2;
+  const ty = h - (75 / 100) * h;
+  ctx.beginPath(); ctx.moveTo(0, ty); ctx.lineTo(w, ty); ctx.stroke();
+  ctx.setLineDash([]);
+
+  const datasets = [
+    { data: chartHistory.melody, color: '#4488ee' },
+    { data: chartHistory.rhythm, color: '#44cc88' },
+    { data: chartHistory.harmony, color: '#cc88ee' },
+    { data: chartHistory.system, color: '#ffffff' },
+  ];
+
+  datasets.forEach(ds => {
+    if (ds.data.length < 2) return;
+    ctx.beginPath();
+    ctx.strokeStyle = ds.color;
+    ctx.lineWidth = ds.color === '#ffffff' ? 3 : 1.5;
+    ctx.globalAlpha = ds.color === '#ffffff' ? 1 : 0.5;
+    const step = w / (ds.data.length - 1);
+    ds.data.forEach((v, i) => {
+      const x = i * step;
+      const y = h - (v / 100) * h;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+  });
+
+  // Legend
+  ctx.font = `${9 * dpr}px sans-serif`;
+  const labels = [['Melody', '#4488ee'], ['Rhythm', '#44cc88'], ['Harmony', '#cc88ee'], ['Combined', '#ffffff']];
+  labels.forEach((l, i) => {
+    ctx.fillStyle = l[1];
+    ctx.fillRect(8 + i * 90 * dpr / 2, 8, 10, 10);
+    ctx.fillStyle = '#888';
+    ctx.fillText(l[0], 22 + i * 90 * dpr / 2, 17);
+  });
+}
+
+function drawTrajectory() {
+  if (trajExpected.length === 0) return;
+
+  drawPianoRoll('traj-expected', trajExpected, '#4488ee');
+  drawPianoRoll('traj-actual', trajActual, '#44cc88');
+  drawDiffMap();
+
+  let matches = 0;
+  for (let i = 0; i < trajExpected.length; i++) {
+    if (trajExpected[i] === trajActual[i]) matches++;
+  }
+  const pct = ((matches / trajExpected.length) * 100).toFixed(0);
+  document.getElementById('traj-pct').textContent = pct + '%';
+  document.getElementById('traj-pct').style.color = pct > 80 ? '#00e676' : pct > 50 ? '#ffc107' : '#ff1744';
+}
+
+function drawPianoRoll(id, data, color) {
+  const canvas = document.getElementById(id);
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = 2;
+  const w = canvas.width = canvas.offsetWidth * dpr;
+  const h = canvas.height = canvas.offsetHeight * dpr;
+  ctx.clearRect(0, 0, w, h);
+
+  // Grid lines for note rows
+  ctx.strokeStyle = '#1a1a2e';
+  ctx.lineWidth = 1;
+  for (let i = 0; i < 8; i++) {
+    const y = (h / 8) * i;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+  }
+
+  const cellW = w / data.length;
+  const cellH = h / 8;
+  data.forEach((note, i) => {
+    const x = i * cellW;
+    const y = h - (note + 1) * cellH;
+    ctx.fillStyle = color;
+    ctx.globalAlpha = 0.8;
+    ctx.fillRect(x + 2, y + 2, cellW - 4, cellH - 4);
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 2, y + 2, cellW - 4, cellH - 4);
+  });
+}
+
+function drawDiffMap() {
+  const canvas = document.getElementById('traj-diff');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = 2;
+  const w = canvas.width = canvas.offsetWidth * dpr;
+  const h = canvas.height = canvas.offsetHeight * dpr;
+  ctx.clearRect(0, 0, w, h);
+
+  const cellW = w / trajExpected.length;
+  const cellH = h / 8;
+
+  for (let i = 0; i < trajExpected.length; i++) {
+    const ex = trajExpected[i];
+    const ac = trajActual[i];
+    const x = i * cellW;
+
+    if (ex === ac) {
+      // Correct - green
+      const y = h - (ex + 1) * cellH;
+      ctx.fillStyle = '#00e676';
+      ctx.globalAlpha = 0.7;
+      ctx.fillRect(x + 2, y + 2, cellW - 4, cellH - 4);
+    } else {
+      // Expected - dimmed
+      const ye = h - (ex + 1) * cellH;
+      ctx.fillStyle = '#ff1744';
+      ctx.globalAlpha = 0.3;
+      ctx.fillRect(x + 2, ye + 2, cellW - 4, cellH - 4);
+      // Actual - red
+      const ya = h - (ac + 1) * cellH;
+      ctx.fillStyle = '#ff1744';
+      ctx.globalAlpha = 0.7;
+      ctx.fillRect(x + 2, ya + 2, cellW - 4, cellH - 4);
+    }
+    ctx.globalAlpha = 1;
+  }
+}
+
+function drawDriftChart() {
+  const canvas = document.getElementById('chart-drift');
+  if (!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const dpr = 2;
+  const w = canvas.width = canvas.offsetWidth * dpr;
+  const h = canvas.height = canvas.offsetHeight * dpr;
+  ctx.clearRect(0, 0, w, h);
+
+  const maxVal = 50;
+
+  // Grid
+  ctx.strokeStyle = '#1a1a2e';
+  ctx.lineWidth = 1;
+  for (let i = 0; i <= 5; i++) {
+    const y = (h / 5) * i;
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(w, y); ctx.stroke();
+  }
+
+  // Threshold line
+  const threshY = h - (STATE.thresholds.drift / maxVal) * h;
+  ctx.setLineDash([6, 4]);
+  ctx.strokeStyle = '#ff174488';
+  ctx.lineWidth = 2;
+  ctx.beginPath(); ctx.moveTo(0, threshY); ctx.lineTo(w, threshY); ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = '#ff174488';
+  ctx.font = `${10 * dpr}px sans-serif`;
+  ctx.fillText(`Threshold: ${STATE.thresholds.drift}`, 6, threshY - 4);
+
+  const datasets = [
+    { data: chartHistory.driftM, color: '#4488ee', label: 'Melody' },
+    { data: chartHistory.driftR, color: '#44cc88', label: 'Rhythm' },
+    { data: chartHistory.driftH, color: '#cc88ee', label: 'Harmony' },
+  ];
+
+  datasets.forEach(ds => {
+    if (ds.data.length < 2) return;
+    ctx.beginPath();
+    ctx.strokeStyle = ds.color;
+    ctx.lineWidth = 2;
+    const step = w / (ds.data.length - 1);
+    ds.data.forEach((v, i) => {
+      const x = i * step;
+      const y = h - (Math.min(v, maxVal) / maxVal) * h;
+      if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+    });
+    ctx.stroke();
+  });
+
+  // Legend
+  ctx.font = `${9 * dpr}px sans-serif`;
+  datasets.forEach((ds, i) => {
+    ctx.fillStyle = ds.color;
+    ctx.fillRect(8 + i * 80 * dpr / 2, 8, 10, 10);
+    ctx.fillStyle = '#888';
+    ctx.fillText(ds.label, 22 + i * 80 * dpr / 2, 17);
+  });
+}
+
+// ===== UPTIME =====
+function updateUptime() {
+  const elapsed = Math.floor((Date.now() - STATE.startTime) / 1000);
+  const hrs = String(Math.floor(elapsed / 3600)).padStart(2, '0');
+  const mins = String(Math.floor((elapsed % 3600) / 60)).padStart(2, '0');
+  const secs = String(elapsed % 60).padStart(2, '0');
+  document.getElementById('uptime').textContent = `${hrs}:${mins}:${secs}`;
+}
+setInterval(updateUptime, 1000);
+
+// ===== MAIN LOOP =====
+let loopTimer = null;
+function startLoop() {
+  if (loopTimer) return;
+  const interval = Math.max(100, 1200 - STATE.speed * 100);
+  loopTimer = setInterval(step, interval);
+}
+function stopLoop() {
+  clearInterval(loopTimer);
+  loopTimer = null;
+}
+function restartLoop() {
+  if (STATE.running) { stopLoop(); startLoop(); }
+}
+
+// ===== EVENT HANDLERS =====
+document.getElementById('btn-play').addEventListener('click', function() {
+  initAudio();
+  STATE.running = !STATE.running;
+  this.innerHTML = STATE.running ? '&#9646;&#9646; Pause' : '&#9654; Play';
+  this.classList.toggle('primary', !STATE.running);
+  if (STATE.running) startLoop(); else stopLoop();
+});
+
+document.getElementById('btn-step').addEventListener('click', () => { initAudio(); step(); });
+
+document.getElementById('btn-anomaly').addEventListener('click', () => {
+  STATE.anomalyActive = true;
+  STATE.anomalyCounter = 0;
+  const targets = ['melody', 'rhythm', 'harmony'];
+  STATE.anomalyTarget = targets[Math.floor(Math.random() * targets.length)];
+  log('CRITICAL', `Anomaly injected into ${STATE.anomalyTarget.charAt(0).toUpperCase() + STATE.anomalyTarget.slice(1)} Agent!`);
+});
+
+document.getElementById('speed').addEventListener('input', function() {
+  STATE.speed = parseInt(this.value);
+  document.getElementById('speed-val').textContent = STATE.speed + 'x';
+  restartLoop();
+});
+
+// Threshold sliders
+document.getElementById('thresh-warn').addEventListener('input', function() {
+  STATE.thresholds.warn = parseInt(this.value);
+  document.getElementById('thresh-warn-val').textContent = this.value + '%';
+});
+document.getElementById('thresh-err').addEventListener('input', function() {
+  STATE.thresholds.error = parseInt(this.value);
+  document.getElementById('thresh-err-val').textContent = this.value + '%';
+});
+document.getElementById('thresh-drift').addEventListener('input', function() {
+  STATE.thresholds.drift = parseInt(this.value);
+  document.getElementById('thresh-drift-val').textContent = this.value;
+});
+
+// Tabs
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', function() {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
+    this.classList.add('active');
+    document.getElementById('pane-' + this.dataset.tab).classList.add('active');
+  });
+});
+
+// Votes
+document.getElementById('vote-a').addEventListener('click', () => {
+  STATE.votes.a++;
+  document.getElementById('votes-a').textContent = STATE.votes.a;
+  log('INFO', `User voted for Agent A (Conservative). Total: ${STATE.votes.a}`);
+});
+document.getElementById('vote-b').addEventListener('click', () => {
+  STATE.votes.b++;
+  document.getElementById('votes-b').textContent = STATE.votes.b;
+  log('INFO', `User voted for Agent B (Adventurous). Total: ${STATE.votes.b}`);
+});
+
+// Recalibrate
+function recalibrate(name) {
+  const a = agents[name];
+  a.score = a.baseline;
+  a.drift = 0;
+  a.errorRate = 0;
+  if (name === 'melody') a.notesGen = Math.floor(a.notesGen * 0.8);
+  if (name === 'rhythm') { a.precision = a.baseline; a.diversity = 50; }
+  if (name === 'harmony') { a.consonance = a.baseline; a.quality = 60; }
+  log('INFO', `${name.charAt(0).toUpperCase() + name.slice(1)} Agent re-calibrated to baseline (${a.baseline}%).`);
+  updateUI();
+}
+
+document.getElementById('btn-recalibrate').addEventListener('click', () => {
+  recalibrate('melody'); recalibrate('rhythm'); recalibrate('harmony');
+  STATE.anomalyActive = false;
+  STATE.anomalyTarget = null;
+  log('INFO', 'All agents re-calibrated. Anomaly injection cleared.');
+});
+document.getElementById('btn-recal-melody').addEventListener('click', () => recalibrate('melody'));
+document.getElementById('btn-recal-rhythm').addEventListener('click', () => recalibrate('rhythm'));
+document.getElementById('btn-recal-harmony').addEventListener('click', () => recalibrate('harmony'));
+
+// Export report
+document.getElementById('btn-report').addEventListener('click', () => {
+  const am = agents.melody, ar = agents.rhythm, ah = agents.harmony;
+  const sysScore = ((am.score + ar.score + ah.score) / 3).toFixed(1);
+  const html = `
+    <table>
+      <tr><th>Metric</th><th>Melody</th><th>Rhythm</th><th>Harmony</th><th>System</th></tr>
+      <tr><td>Current Score</td><td>${am.score.toFixed(1)}%</td><td>${ar.score.toFixed(1)}%</td><td>${ah.score.toFixed(1)}%</td><td>${sysScore}%</td></tr>
+      <tr><td>Error Rate</td><td>${am.errorRate.toFixed(1)}%</td><td>${ar.errorRate.toFixed(1)}%</td><td>${ah.errorRate.toFixed(1)}%</td><td>-</td></tr>
+      <tr><td>Drift from Baseline</td><td>${am.drift.toFixed(1)}</td><td>${ar.drift.toFixed(1)}</td><td>${ah.drift.toFixed(1)}</td><td>-</td></tr>
+      <tr><td>Baseline</td><td>${am.baseline}%</td><td>${ar.baseline}%</td><td>${ah.baseline}%</td><td>-</td></tr>
+      <tr><td>Notes Generated</td><td>${am.notesGen}</td><td>-</td><td>-</td><td>-</td></tr>
+      <tr><td>Rhythm Diversity</td><td>-</td><td>${ar.diversity.toFixed(0)}</td><td>-</td><td>-</td></tr>
+      <tr><td>Harmony Quality</td><td>-</td><td>-</td><td>${ah.quality.toFixed(0)}</td><td>-</td></tr>
+    </table>
+    <h3 style="margin-top:16px;font-size:13px;color:#8899cc;">Session Summary</h3>
+    <table>
+      <tr><td>Total Generations</td><td>${STATE.generation}</td></tr>
+      <tr><td>A/B Votes (A vs B)</td><td>${STATE.votes.a} vs ${STATE.votes.b}</td></tr>
+      <tr><td>Log Events</td><td>INFO: ${STATE.logCounts.INFO}, WARN: ${STATE.logCounts.WARN}, ERROR: ${STATE.logCounts.ERROR}, CRITICAL: ${STATE.logCounts.CRITICAL}</td></tr>
+      <tr><td>Anomaly Active</td><td>${STATE.anomalyActive ? 'Yes (' + STATE.anomalyTarget + ')' : 'No'}</td></tr>
+      <tr><td>Warning Threshold</td><td>${STATE.thresholds.warn}%</td></tr>
+      <tr><td>Error Threshold</td><td>${STATE.thresholds.error}%</td></tr>
+      <tr><td>Drift Limit</td><td>${STATE.thresholds.drift}</td></tr>
+    </table>
+    <h3 style="margin-top:16px;font-size:13px;color:#8899cc;">Trajectory Analysis</h3>
+    <table>
+      <tr><td>Match Percentage</td><td>${document.getElementById('traj-pct').textContent}</td></tr>
+      <tr><td>Expected Sequence</td><td style="font-family:monospace;">${trajExpected.join(', ') || 'N/A'}</td></tr>
+      <tr><td>Actual Sequence</td><td style="font-family:monospace;">${trajActual.join(', ') || 'N/A'}</td></tr>
+    </table>
+  `;
+  document.getElementById('modal-content').innerHTML = html;
+  document.getElementById('modal-overlay').classList.add('open');
+});
+
+document.getElementById('modal-close').addEventListener('click', () => {
+  document.getElementById('modal-overlay').classList.remove('open');
+});
+document.getElementById('modal-overlay').addEventListener('click', function(e) {
+  if (e.target === this) this.classList.remove('open');
+});
+
+// Sparkline click: show detail in log
+document.querySelectorAll('.sparkline').forEach(canvas => {
+  canvas.addEventListener('click', function() {
+    const name = this.id.replace('spark-', '');
+    const a = agents[name];
+    const avg = a.scores.length ? (a.scores.reduce((s,v) => s + v, 0) / a.scores.length).toFixed(1) : 'N/A';
+    const min = a.scores.length ? Math.min(...a.scores).toFixed(1) : 'N/A';
+    const max = a.scores.length ? Math.max(...a.scores).toFixed(1) : 'N/A';
+    log('INFO', `${name.charAt(0).toUpperCase() + name.slice(1)} history: avg=${avg}%, min=${min}%, max=${max}%, samples=${a.scores.length}`);
+  });
+});
+
+// Initial UI
+updateUI();
+log('INFO', 'Performance Lab initialized. Press Play to start monitoring.');
+log('INFO', '3 agents loaded: Melody, Rhythm, Harmony.');
+</script>
+</body>
+</html>

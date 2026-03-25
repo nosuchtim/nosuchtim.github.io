@@ -1,0 +1,928 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Guarded Synth — Guardrail Safety Patterns</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a12;color:#e0e0e0;font-family:'Segoe UI',system-ui,sans-serif;overflow-x:hidden;min-height:100vh}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:#111}
+::-webkit-scrollbar-thumb{background:#333;border-radius:3px}
+
+.app-header{text-align:center;padding:12px 0 6px;background:linear-gradient(180deg,#0e0e1a,#0a0a12);border-bottom:1px solid #1a1a2e}
+.app-header h1{font-size:1.6rem;letter-spacing:2px;background:linear-gradient(90deg,#4fc3f7,#ab47bc,#ef5350);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+.app-header p{font-size:.75rem;color:#666;margin-top:2px}
+
+.main-layout{display:grid;grid-template-columns:1fr 280px;grid-template-rows:auto auto auto;gap:8px;padding:8px;max-width:1400px;margin:0 auto}
+
+/* INPUT SECTION */
+.input-section{grid-column:1;background:#0e0e1a;border:1px solid #1a1a2e;border-radius:8px;padding:12px}
+.input-section h2{font-size:.85rem;color:#4fc3f7;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px}
+
+.piano-container{display:flex;justify-content:center;position:relative;height:120px;margin-bottom:12px;user-select:none}
+.piano-key{position:relative;cursor:pointer;border-radius:0 0 4px 4px;transition:background .05s}
+.piano-key.white{width:36px;height:110px;background:linear-gradient(180deg,#e8e8e8,#fff);border:1px solid #999;margin:0 1px;z-index:1}
+.piano-key.white:hover{background:linear-gradient(180deg,#d0d0ff,#e8e8ff)}
+.piano-key.white.active{background:linear-gradient(180deg,#90caf9,#bbdefb)}
+.piano-key.black{width:24px;height:70px;background:linear-gradient(180deg,#222,#444);border:1px solid #111;margin:0 -12px;z-index:2}
+.piano-key.black:hover{background:linear-gradient(180deg,#333,#555)}
+.piano-key.black.active{background:linear-gradient(180deg,#1565c0,#1976d2)}
+.piano-key .key-label{position:absolute;bottom:4px;left:50%;transform:translateX(-50%);font-size:.55rem;color:#888;pointer-events:none}
+.piano-key.black .key-label{color:#aaa}
+
+.controls-row{display:grid;grid-template-columns:repeat(5,1fr);gap:10px}
+.control-group{display:flex;flex-direction:column;gap:2px}
+.control-group label{font-size:.65rem;color:#888;text-transform:uppercase}
+.control-group input[type=range]{width:100%;accent-color:#4fc3f7;height:4px}
+.control-group select{background:#1a1a2e;color:#e0e0e0;border:1px solid #333;border-radius:4px;padding:2px 4px;font-size:.75rem}
+.control-value{font-size:.7rem;color:#4fc3f7;text-align:right}
+
+.test-buttons{display:flex;gap:6px;margin-top:10px;flex-wrap:wrap}
+.test-btn{padding:6px 12px;border:none;border-radius:4px;font-size:.7rem;cursor:pointer;font-weight:600;text-transform:uppercase;letter-spacing:.5px;transition:all .15s}
+.test-btn.stress{background:#ff9800;color:#000}
+.test-btn.dissonance{background:#9c27b0;color:#fff}
+.test-btn.spike{background:#f44336;color:#fff}
+.test-btn.reset{background:#607d8b;color:#fff}
+.test-btn:hover{transform:scale(1.05);filter:brightness(1.2)}
+.test-btn:active{transform:scale(0.97)}
+
+.mode-toggle{display:flex;align-items:center;gap:8px;margin-top:8px;padding:8px;background:#1a0a0a;border:1px solid #f4433655;border-radius:6px}
+.mode-toggle label{font-size:.75rem;font-weight:600}
+.mode-toggle .safe{color:#4caf50}
+.mode-toggle .unsafe{color:#f44336}
+.toggle-switch{position:relative;width:48px;height:24px;cursor:pointer}
+.toggle-switch input{display:none}
+.toggle-track{position:absolute;inset:0;background:#4caf50;border-radius:12px;transition:background .3s}
+.toggle-track::after{content:'';position:absolute;width:20px;height:20px;background:#fff;border-radius:50%;top:2px;left:2px;transition:transform .3s}
+.toggle-switch input:checked~.toggle-track{background:#f44336}
+.toggle-switch input:checked~.toggle-track::after{transform:translateX(24px)}
+.unsafe-banner{display:none;background:#f44336;color:#fff;text-align:center;padding:4px;font-size:.7rem;font-weight:700;border-radius:4px;margin-top:4px;animation:pulse-red 1s infinite}
+.unsafe-banner.show{display:block}
+@keyframes pulse-red{0%,100%{opacity:1}50%{opacity:.6}}
+
+/* PIPELINE SECTION */
+.pipeline-section{grid-column:1;background:#0e0e1a;border:1px solid #1a1a2e;border-radius:8px;padding:12px;overflow:hidden}
+.pipeline-section h2{font-size:.85rem;color:#ab47bc;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px}
+.pipeline{display:flex;align-items:stretch;gap:0;position:relative;min-height:160px}
+.pipeline-connector{width:30px;display:flex;align-items:center;justify-content:center;position:relative}
+.pipeline-connector::before{content:'';position:absolute;width:100%;height:2px;background:#333}
+.pipeline-arrow{color:#555;font-size:1.2rem}
+
+.gate{flex:1;border:2px solid;border-radius:8px;padding:8px;position:relative;overflow:hidden;display:flex;flex-direction:column;min-width:0;transition:border-color .3s,box-shadow .3s}
+.gate.disabled{opacity:.35;border-style:dashed}
+.gate::before{content:'';position:absolute;top:0;left:-100%;width:100%;height:100%;background:linear-gradient(90deg,transparent,rgba(255,255,255,.03),transparent);animation:gate-scan 3s linear infinite}
+@keyframes gate-scan{to{left:100%}}
+.gate.blocked{animation:gate-shake .3s}
+@keyframes gate-shake{0%,100%{transform:translateX(0)}25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+
+.gate-1{border-color:#2196f3;box-shadow:0 0 15px #2196f322}
+.gate-2{border-color:#ffc107;box-shadow:0 0 15px #ffc10722}
+.gate-3{border-color:#4caf50;box-shadow:0 0 15px #4caf5022}
+.gate-4{border-color:#9c27b0;box-shadow:0 0 15px #9c27b022}
+.gate-5{border-color:#f44336;box-shadow:0 0 15px #f4433622}
+
+.gate-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:4px}
+.gate-name{font-size:.6rem;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.gate-1 .gate-name{color:#2196f3}
+.gate-2 .gate-name{color:#ffc107}
+.gate-3 .gate-name{color:#4caf50}
+.gate-4 .gate-name{color:#9c27b0}
+.gate-5 .gate-name{color:#f44336}
+
+.gate-status{font-size:.55rem;font-weight:700;padding:1px 6px;border-radius:3px;text-transform:uppercase}
+.gate-status.pass{background:#4caf5033;color:#4caf50}
+.gate-status.warn{background:#ffc10733;color:#ffc107}
+.gate-status.block{background:#f4433633;color:#f44336}
+.gate-status.idle{background:#66666633;color:#666}
+
+.gate-checks{flex:1;font-size:.55rem;color:#aaa;line-height:1.5}
+.gate-checks .check-item{display:flex;align-items:center;gap:3px}
+.check-pass{color:#4caf50}
+.check-fail{color:#f44336}
+.check-warn{color:#ffc107}
+
+.gate-stats{display:flex;justify-content:space-between;font-size:.5rem;color:#666;margin-top:4px;border-top:1px solid #222;padding-top:3px}
+
+.gate-toggle{position:absolute;top:4px;right:4px;width:28px;height:14px;cursor:pointer}
+.gate-toggle input{display:none}
+.gate-toggle .gt-track{position:absolute;inset:0;background:#333;border-radius:7px;transition:background .3s}
+.gate-toggle .gt-track::after{content:'';position:absolute;width:10px;height:10px;background:#888;border-radius:50%;top:2px;left:2px;transition:all .3s}
+.gate-toggle input:checked~.gt-track{background:#4caf5066}
+.gate-toggle input:checked~.gt-track::after{transform:translateX(14px);background:#4caf50}
+
+/* Pulse animation through pipeline */
+.pulse-dot{position:absolute;width:8px;height:8px;border-radius:50%;background:#4fc3f7;box-shadow:0 0 8px #4fc3f7;top:50%;transform:translateY(-50%);z-index:10;pointer-events:none;transition:none}
+.pulse-dot.blocked{background:#f44336;box-shadow:0 0 8px #f44336}
+.pulse-dot.warned{background:#ffc107;box-shadow:0 0 8px #ffc107}
+
+/* DASHBOARD */
+.dashboard{grid-column:2;grid-row:1/4;background:#0e0e1a;border:1px solid #1a1a2e;border-radius:8px;padding:10px;display:flex;flex-direction:column;gap:8px;max-height:calc(100vh - 80px);overflow-y:auto}
+.dashboard h2{font-size:.85rem;color:#ef5350;text-transform:uppercase;letter-spacing:1px}
+
+.stat-counters{display:grid;grid-template-columns:repeat(3,1fr);gap:4px}
+.stat-box{background:#111;border-radius:6px;padding:6px;text-align:center}
+.stat-box .stat-val{font-size:1.3rem;font-weight:700}
+.stat-box .stat-label{font-size:.55rem;color:#888;text-transform:uppercase}
+.stat-box.played .stat-val{color:#4fc3f7}
+.stat-box.blocked .stat-val{color:#f44336}
+.stat-box.warned .stat-val{color:#ffc107}
+
+.threat-meter{background:#111;border-radius:6px;padding:8px}
+.threat-meter h3{font-size:.65rem;color:#888;text-transform:uppercase;margin-bottom:4px}
+.threat-bar{height:16px;background:#222;border-radius:8px;overflow:hidden;position:relative}
+.threat-fill{height:100%;border-radius:8px;transition:width .5s,background .5s;width:0%}
+.threat-fill.low{background:linear-gradient(90deg,#4caf50,#8bc34a)}
+.threat-fill.medium{background:linear-gradient(90deg,#ffc107,#ff9800)}
+.threat-fill.high{background:linear-gradient(90deg,#ff5722,#f44336)}
+.threat-label{font-size:.6rem;text-align:center;margin-top:2px;font-weight:600}
+
+.block-rates{background:#111;border-radius:6px;padding:8px}
+.block-rates h3{font-size:.65rem;color:#888;text-transform:uppercase;margin-bottom:4px}
+.rate-bar-row{display:flex;align-items:center;gap:4px;margin:2px 0}
+.rate-bar-label{font-size:.5rem;width:50px;text-align:right;color:#888}
+.rate-bar-bg{flex:1;height:8px;background:#222;border-radius:4px;overflow:hidden}
+.rate-bar-fill{height:100%;border-radius:4px;transition:width .5s}
+.rate-bar-val{font-size:.5rem;width:24px;color:#aaa}
+
+.event-log{background:#111;border-radius:6px;padding:8px;flex:1;min-height:120px;overflow:hidden;display:flex;flex-direction:column}
+.event-log h3{font-size:.65rem;color:#888;text-transform:uppercase;margin-bottom:4px}
+.log-entries{flex:1;overflow-y:auto;font-family:'Consolas','Courier New',monospace;font-size:.55rem;line-height:1.6}
+.log-entry{border-bottom:1px solid #1a1a1a;padding:1px 0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.log-entry .log-time{color:#555}
+.log-entry.pass .log-gate{color:#4caf50}
+.log-entry.block .log-gate{color:#f44336}
+.log-entry.warn .log-gate{color:#ffc107}
+
+/* VISUALIZER */
+.visualizer-section{grid-column:1;background:#0e0e1a;border:1px solid #1a1a2e;border-radius:8px;padding:12px}
+.visualizer-section h2{font-size:.85rem;color:#66bb6a;margin-bottom:8px;text-transform:uppercase;letter-spacing:1px}
+.viz-container{display:flex;gap:8px;height:80px}
+.viz-container canvas{flex:1;background:#080810;border-radius:4px;border:1px solid #1a1a2e}
+</style>
+</head>
+<body>
+
+<div class="app-header">
+  <h1>GUARDED SYNTH</h1>
+  <p>Agentic Design Pattern: Guardrails / Safety Patterns &mdash; Multi-layered validation pipeline for safe audio synthesis</p>
+</div>
+
+<div class="main-layout">
+  <!-- INPUT SECTION -->
+  <div class="input-section">
+    <h2>Input Controls</h2>
+    <div class="piano-container" id="piano"></div>
+    <div class="controls-row">
+      <div class="control-group">
+        <label>Volume <span id="volVal" class="control-value">60%</span></label>
+        <input type="range" id="volumeCtrl" min="0" max="100" value="60">
+      </div>
+      <div class="control-group">
+        <label>Freq Mult <span id="freqVal" class="control-value">1.0x</span></label>
+        <input type="range" id="freqCtrl" min="50" max="400" value="100">
+      </div>
+      <div class="control-group">
+        <label>Detune <span id="detuneVal" class="control-value">0</span></label>
+        <input type="range" id="detuneCtrl" min="-100" max="100" value="0">
+      </div>
+      <div class="control-group">
+        <label>Waveform</label>
+        <select id="waveformCtrl">
+          <option value="sine">Sine</option>
+          <option value="triangle">Triangle</option>
+          <option value="square">Square</option>
+          <option value="sawtooth">Sawtooth</option>
+        </select>
+      </div>
+      <div class="control-group">
+        <label>Effect <span id="fxVal" class="control-value">30%</span></label>
+        <input type="range" id="fxCtrl" min="0" max="100" value="30">
+      </div>
+    </div>
+    <div class="test-buttons">
+      <button class="test-btn stress" onclick="stressTest()">Stress Test</button>
+      <button class="test-btn dissonance" onclick="dissonanceTest()">Dissonance Test</button>
+      <button class="test-btn spike" onclick="volumeSpike()">Volume Spike</button>
+      <button class="test-btn reset" onclick="resetStats()">Reset Stats</button>
+    </div>
+    <div class="mode-toggle">
+      <label class="safe">SAFE MODE</label>
+      <label class="toggle-switch">
+        <input type="checkbox" id="masterToggle" onchange="toggleMasterMode()">
+        <span class="toggle-track"></span>
+      </label>
+      <label class="unsafe">UNSAFE MODE</label>
+      <div class="unsafe-banner" id="unsafeBanner">WARNING: ALL GUARDRAILS DISABLED - UNSAFE AUDIO MAY PLAY</div>
+    </div>
+  </div>
+
+  <!-- PIPELINE SECTION -->
+  <div class="pipeline-section">
+    <h2>Guardrail Pipeline</h2>
+    <div class="pipeline" id="pipeline">
+      <!-- Gate 1: Input Validator -->
+      <div class="gate gate-1" id="gate1">
+        <label class="gate-toggle"><input type="checkbox" checked onchange="toggleGate(1,this.checked)"><span class="gt-track"></span></label>
+        <div class="gate-header">
+          <span class="gate-name">Input Validator</span>
+          <span class="gate-status idle" id="gate1-status">IDLE</span>
+        </div>
+        <div class="gate-checks" id="gate1-checks">
+          <div class="check-item"><span class="check-pass">--</span> Frequency range (20-8000Hz)</div>
+          <div class="check-item"><span class="check-pass">--</span> Volume level (&le;85%)</div>
+          <div class="check-item"><span class="check-pass">--</span> Valid waveform type</div>
+        </div>
+        <div class="gate-stats"><span>Checks: <b id="gate1-checks-count">0</b></span><span>Blocks: <b id="gate1-blocks">0</b></span></div>
+      </div>
+      <div class="pipeline-connector"><span class="pipeline-arrow">&raquo;</span></div>
+
+      <!-- Gate 2: Rate Limiter -->
+      <div class="gate gate-2" id="gate2">
+        <label class="gate-toggle"><input type="checkbox" checked onchange="toggleGate(2,this.checked)"><span class="gt-track"></span></label>
+        <div class="gate-header">
+          <span class="gate-name">Rate Limiter</span>
+          <span class="gate-status idle" id="gate2-status">IDLE</span>
+        </div>
+        <div class="gate-checks" id="gate2-checks">
+          <div class="check-item"><span class="check-pass">--</span> Rate: <b id="rateCounter">0</b>/8 notes/sec</div>
+          <div class="check-item"><span class="check-pass">--</span> Burst detection</div>
+        </div>
+        <div class="gate-stats"><span>Checks: <b id="gate2-checks-count">0</b></span><span>Blocks: <b id="gate2-blocks">0</b></span></div>
+      </div>
+      <div class="pipeline-connector"><span class="pipeline-arrow">&raquo;</span></div>
+
+      <!-- Gate 3: Harmony Checker -->
+      <div class="gate gate-3" id="gate3">
+        <label class="gate-toggle"><input type="checkbox" checked onchange="toggleGate(3,this.checked)"><span class="gt-track"></span></label>
+        <div class="gate-header">
+          <span class="gate-name">Harmony Checker</span>
+          <span class="gate-status idle" id="gate3-status">IDLE</span>
+        </div>
+        <div class="gate-checks" id="gate3-checks">
+          <div class="check-item"><span class="check-pass">--</span> Interval consonance</div>
+          <div class="check-item"><span class="check-pass">--</span> Active voices: <b id="harmonyVoices">0</b></div>
+        </div>
+        <div class="gate-stats"><span>Checks: <b id="gate3-checks-count">0</b></span><span>Warns: <b id="gate3-warns">0</b></span></div>
+      </div>
+      <div class="pipeline-connector"><span class="pipeline-arrow">&raquo;</span></div>
+
+      <!-- Gate 4: Output Filter -->
+      <div class="gate gate-4" id="gate4">
+        <label class="gate-toggle"><input type="checkbox" checked onchange="toggleGate(4,this.checked)"><span class="gt-track"></span></label>
+        <div class="gate-header">
+          <span class="gate-name">Output Filter</span>
+          <span class="gate-status idle" id="gate4-status">IDLE</span>
+        </div>
+        <div class="gate-checks" id="gate4-checks">
+          <div class="check-item"><span class="check-pass">--</span> Volume clamped</div>
+          <div class="check-item"><span class="check-pass">--</span> Polyphony: <b id="polyCount">0</b>/6</div>
+          <div class="check-item"><span class="check-pass">--</span> Limiter applied</div>
+        </div>
+        <div class="gate-stats"><span>Checks: <b id="gate4-checks-count">0</b></span><span>Blocks: <b id="gate4-blocks">0</b></span></div>
+      </div>
+      <div class="pipeline-connector"><span class="pipeline-arrow">&raquo;</span></div>
+
+      <!-- Gate 5: Safety Monitor -->
+      <div class="gate gate-5" id="gate5">
+        <label class="gate-toggle"><input type="checkbox" checked onchange="toggleGate(5,this.checked)"><span class="gt-track"></span></label>
+        <div class="gate-header">
+          <span class="gate-name">Safety Monitor</span>
+          <span class="gate-status idle" id="gate5-status">IDLE</span>
+        </div>
+        <div class="gate-checks" id="gate5-checks">
+          <div class="check-item"><span class="check-pass">--</span> dB level safe</div>
+          <div class="check-item"><span class="check-pass">--</span> Freq balance OK</div>
+          <div class="check-item"><span class="check-pass">--</span> Duration limit</div>
+        </div>
+        <div class="gate-stats"><span>Checks: <b id="gate5-checks-count">0</b></span><span>Blocks: <b id="gate5-blocks">0</b></span></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- DASHBOARD -->
+  <div class="dashboard">
+    <h2>Guardrail Dashboard</h2>
+    <div class="stat-counters">
+      <div class="stat-box played"><div class="stat-val" id="totalPlayed">0</div><div class="stat-label">Played</div></div>
+      <div class="stat-box blocked"><div class="stat-val" id="totalBlocked">0</div><div class="stat-label">Blocked</div></div>
+      <div class="stat-box warned"><div class="stat-val" id="totalWarned">0</div><div class="stat-label">Warned</div></div>
+    </div>
+    <div class="threat-meter">
+      <h3>Threat Level</h3>
+      <div class="threat-bar"><div class="threat-fill low" id="threatFill"></div></div>
+      <div class="threat-label" id="threatLabel" style="color:#4caf50">LOW</div>
+    </div>
+    <div class="block-rates">
+      <h3>Block Rate by Gate</h3>
+      <div class="rate-bar-row"><span class="rate-bar-label" style="color:#2196f3">Input</span><div class="rate-bar-bg"><div class="rate-bar-fill" id="br1" style="width:0%;background:#2196f3"></div></div><span class="rate-bar-val" id="brv1">0%</span></div>
+      <div class="rate-bar-row"><span class="rate-bar-label" style="color:#ffc107">Rate</span><div class="rate-bar-bg"><div class="rate-bar-fill" id="br2" style="width:0%;background:#ffc107"></div></div><span class="rate-bar-val" id="brv2">0%</span></div>
+      <div class="rate-bar-row"><span class="rate-bar-label" style="color:#4caf50">Harmony</span><div class="rate-bar-bg"><div class="rate-bar-fill" id="br3" style="width:0%;background:#4caf50"></div></div><span class="rate-bar-val" id="brv3">0%</span></div>
+      <div class="rate-bar-row"><span class="rate-bar-label" style="color:#9c27b0">Output</span><div class="rate-bar-bg"><div class="rate-bar-fill" id="br4" style="width:0%;background:#9c27b0"></div></div><span class="rate-bar-val" id="brv4">0%</span></div>
+      <div class="rate-bar-row"><span class="rate-bar-label" style="color:#f44336">Safety</span><div class="rate-bar-bg"><div class="rate-bar-fill" id="br5" style="width:0%;background:#f44336"></div></div><span class="rate-bar-val" id="brv5">0%</span></div>
+    </div>
+    <div class="event-log">
+      <h3>Event Log</h3>
+      <div class="log-entries" id="logEntries"></div>
+    </div>
+  </div>
+
+  <!-- VISUALIZER -->
+  <div class="visualizer-section">
+    <h2>Safe Output &mdash; Audio Visualization</h2>
+    <div class="viz-container">
+      <canvas id="waveCanvas"></canvas>
+      <canvas id="spectrumCanvas"></canvas>
+    </div>
+  </div>
+</div>
+
+<script>
+// ========== AUDIO ENGINE ==========
+let audioCtx = null;
+let masterGain, compressor, analyserWave, analyserSpec;
+const activeVoices = new Map();
+let voiceIdCounter = 0;
+
+function initAudio() {
+  if (audioCtx) return;
+  audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  compressor = audioCtx.createDynamicsCompressor();
+  compressor.threshold.value = -20;
+  compressor.knee.value = 10;
+  compressor.ratio.value = 12;
+  compressor.attack.value = 0.003;
+  compressor.release.value = 0.15;
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0.5;
+  analyserWave = audioCtx.createAnalyser();
+  analyserWave.fftSize = 2048;
+  analyserSpec = audioCtx.createAnalyser();
+  analyserSpec.fftSize = 512;
+  masterGain.connect(compressor);
+  compressor.connect(analyserWave);
+  analyserWave.connect(analyserSpec);
+  analyserSpec.connect(audioCtx.destination);
+  startVisualization();
+}
+
+function playNote(freq, vol, waveform, detune, duration = 1.5) {
+  initAudio();
+  const id = voiceIdCounter++;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = waveform;
+  osc.frequency.value = freq;
+  osc.detune.value = detune;
+  const safeVol = Math.max(0, Math.min(1, vol));
+  gain.gain.setValueAtTime(safeVol, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+  osc.connect(gain);
+  gain.connect(masterGain);
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
+  activeVoices.set(id, { osc, gain, freq, startTime: Date.now() });
+  osc.onended = () => activeVoices.delete(id);
+  setTimeout(() => activeVoices.delete(id), duration * 1000 + 100);
+  return id;
+}
+
+// ========== PIANO SETUP ==========
+const noteNames = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const keyMap = {a:'C4',w:'C#4',s:'D4',e:'D#4',d:'E4',f:'F4',t:'F#4',g:'G4',y:'G#4',h:'A4',u:'A#4',j:'B4',k:'C5',o:'C#5',l:'D5',p:'D#5'};
+const baseFreqs = {};
+const pianoNotes = [];
+
+(function buildPiano(){
+  for(let oct=3;oct<=5;oct++){
+    for(let i=0;i<12;i++){
+      const name = noteNames[i]+oct;
+      const midi = (oct+1)*12+i;
+      baseFreqs[name] = 440*Math.pow(2,(midi-69)/12);
+      if(oct>=4 && oct<=5) pianoNotes.push({name,midi,isBlack:noteNames[i].includes('#')});
+    }
+  }
+  // trim to 2 octaves
+  const filtered = pianoNotes.slice(0,25);
+  const container = document.getElementById('piano');
+  const kbLabels = Object.entries(keyMap);
+  filtered.forEach(n => {
+    const key = document.createElement('div');
+    key.className = `piano-key ${n.isBlack?'black':'white'}`;
+    key.dataset.note = n.name;
+    const kb = kbLabels.find(([k,v])=>v===n.name);
+    const label = document.createElement('span');
+    label.className = 'key-label';
+    label.textContent = kb ? kb[0].toUpperCase() : n.name.replace(/\d/,'');
+    key.appendChild(label);
+    key.addEventListener('mousedown', () => triggerNote(n.name, key));
+    key.addEventListener('mouseup', () => key.classList.remove('active'));
+    key.addEventListener('mouseleave', () => key.classList.remove('active'));
+    container.appendChild(key);
+  });
+})();
+
+document.addEventListener('keydown', e => {
+  if(e.repeat) return;
+  const note = keyMap[e.key.toLowerCase()];
+  if(note){
+    const el = document.querySelector(`.piano-key[data-note="${note}"]`);
+    if(el) triggerNote(note, el);
+  }
+});
+document.addEventListener('keyup', e => {
+  const note = keyMap[e.key.toLowerCase()];
+  if(note){
+    const el = document.querySelector(`.piano-key[data-note="${note}"]`);
+    if(el) el.classList.remove('active');
+  }
+});
+
+// ========== CONTROLS ==========
+const volCtrl = document.getElementById('volumeCtrl');
+const freqCtrl = document.getElementById('freqCtrl');
+const detuneCtrl = document.getElementById('detuneCtrl');
+const waveCtrl = document.getElementById('waveformCtrl');
+const fxCtrl = document.getElementById('fxCtrl');
+
+volCtrl.oninput = () => document.getElementById('volVal').textContent = volCtrl.value+'%';
+freqCtrl.oninput = () => document.getElementById('freqVal').textContent = (freqCtrl.value/100).toFixed(1)+'x';
+detuneCtrl.oninput = () => document.getElementById('detuneVal').textContent = detuneCtrl.value;
+fxCtrl.oninput = () => document.getElementById('fxVal').textContent = fxCtrl.value+'%';
+
+function getParams(){
+  return {
+    volume: parseInt(volCtrl.value),
+    freqMult: parseInt(freqCtrl.value)/100,
+    detune: parseInt(detuneCtrl.value),
+    waveform: waveCtrl.value,
+    effectIntensity: parseInt(fxCtrl.value)
+  };
+}
+
+// ========== GUARDRAIL STATE ==========
+const gateEnabled = [true,true,true,true,true,true]; // index 0 unused
+const stats = {
+  played:0, blocked:0, warned:0,
+  gateChecks:[0,0,0,0,0,0],
+  gateBlocks:[0,0,0,0,0,0],
+  gateWarns:[0,0,0,0,0,0],
+  recentBlocks:[],
+  recentEvents:[]
+};
+const rateHistory = [];
+const MAX_RATE = 8;
+const MAX_POLYPHONY = 6;
+let unsafeMode = false;
+
+function toggleGate(n, enabled){
+  gateEnabled[n] = enabled;
+  const el = document.getElementById('gate'+n);
+  el.classList.toggle('disabled', !enabled);
+}
+
+function toggleMasterMode(){
+  unsafeMode = document.getElementById('masterToggle').checked;
+  document.getElementById('unsafeBanner').classList.toggle('show', unsafeMode);
+  for(let i=1;i<=5;i++){
+    gateEnabled[i] = !unsafeMode;
+    const cb = document.querySelector(`#gate${i} .gate-toggle input`);
+    cb.checked = !unsafeMode;
+    toggleGate(i, !unsafeMode);
+  }
+}
+
+// ========== GUARDRAIL PIPELINE ==========
+function triggerNote(noteName, keyEl){
+  if(keyEl) keyEl.classList.add('active');
+  const params = getParams();
+  const baseFreq = baseFreqs[noteName] || 440;
+  const freq = baseFreq * params.freqMult;
+  const noteData = { noteName, freq, volume: params.volume, waveform: params.waveform, detune: params.detune, effectIntensity: params.effectIntensity };
+  processGuardrailPipeline(noteData);
+}
+
+async function processGuardrailPipeline(noteData){
+  let result = { ...noteData, passed: true, warned: false, blockedBy: null, warnings: [] };
+
+  // Animate pulse
+  animatePulse(result);
+
+  // Gate 1: Input Validator
+  result = runGate1(result);
+  updateGateUI(1, result);
+  if(!result.passed && gateEnabled[1]){ finalizeResult(result); return; }
+
+  // Gate 2: Rate Limiter
+  result = runGate2(result);
+  updateGateUI(2, result);
+  if(!result.passed && gateEnabled[2]){ finalizeResult(result); return; }
+
+  // Gate 3: Harmony Checker
+  result = runGate3(result);
+  updateGateUI(3, result);
+
+  // Gate 4: Output Filter
+  result = runGate4(result);
+  updateGateUI(4, result);
+  if(!result.passed && gateEnabled[4]){ finalizeResult(result); return; }
+
+  // Gate 5: Safety Monitor
+  result = runGate5(result);
+  updateGateUI(5, result);
+  if(!result.passed && gateEnabled[5]){ finalizeResult(result); return; }
+
+  // Play the note
+  const vol = (result.clampedVolume != null ? result.clampedVolume : result.volume) / 100;
+  playNote(result.freq, vol, result.waveform, result.detune);
+  stats.played++;
+  if(result.warned) stats.warned++;
+  updateDashboard();
+  addLog('pass', result.lastGate || 'SYNTH', `PASS - ${result.noteName} ${Math.round(result.freq)}Hz vol:${result.volume}%`);
+}
+
+function runGate1(r){
+  stats.gateChecks[1]++;
+  const checks = [];
+  const freqOk = r.freq >= 20 && r.freq <= 8000;
+  const volOk = r.volume <= 85;
+  const waveOk = ['sine','triangle','square','sawtooth'].includes(r.waveform);
+  checks.push({ label: `Freq ${Math.round(r.freq)}Hz (20-8000)`, ok: freqOk });
+  checks.push({ label: `Volume ${r.volume}% (<=85%)`, ok: volOk });
+  checks.push({ label: `Waveform: ${r.waveform}`, ok: waveOk });
+  r.gate1checks = checks;
+  if(gateEnabled[1] && (!freqOk || !volOk || !waveOk)){
+    r.passed = false;
+    r.blockedBy = 'INPUT_VALIDATOR';
+    stats.gateBlocks[1]++;
+    stats.blocked++;
+    addLog('block','INPUT_VALIDATOR', `BLOCK - freq:${Math.round(r.freq)}Hz vol:${r.volume}% wave:${r.waveform}`);
+  }
+  r.lastGate = 'INPUT_VALIDATOR';
+  return r;
+}
+
+function runGate2(r){
+  stats.gateChecks[2]++;
+  const now = Date.now();
+  rateHistory.push(now);
+  while(rateHistory.length && rateHistory[0] < now - 1000) rateHistory.shift();
+  const rate = rateHistory.length;
+  document.getElementById('rateCounter').textContent = rate;
+  r.gate2rate = rate;
+  if(gateEnabled[2] && rate > MAX_RATE){
+    r.passed = false;
+    r.blockedBy = 'RATE_LIMITER';
+    stats.gateBlocks[2]++;
+    stats.blocked++;
+    addLog('block','RATE_LIMITER', `BLOCK - ${rate} notes/sec exceeds limit of ${MAX_RATE}`);
+  }
+  r.lastGate = 'RATE_LIMITER';
+  return r;
+}
+
+function runGate3(r){
+  stats.gateChecks[3]++;
+  const activeFreqs = Array.from(activeVoices.values()).map(v => v.freq);
+  document.getElementById('harmonyVoices').textContent = activeFreqs.length;
+  let dissonant = false;
+  const dissonantIntervals = [1, 2, 6, 11]; // semitones: minor 2nd, major 2nd, tritone, major 7th
+  for(const af of activeFreqs){
+    const ratio = r.freq / af;
+    const semitones = Math.round(12 * Math.log2(ratio)) % 12;
+    const absSemi = Math.abs(semitones);
+    if(dissonantIntervals.includes(absSemi)){
+      dissonant = true;
+      break;
+    }
+  }
+  r.gate3dissonant = dissonant;
+  if(gateEnabled[3] && dissonant){
+    r.warned = true;
+    r.warnings.push('Dissonant interval detected');
+    stats.gateWarns[3]++;
+    addLog('warn','HARMONY_CHECK', `WARN - Dissonant interval with active voices`);
+  }
+  r.lastGate = 'HARMONY_CHECK';
+  return r;
+}
+
+function runGate4(r){
+  stats.gateChecks[4]++;
+  const polyCount = activeVoices.size;
+  document.getElementById('polyCount').textContent = polyCount;
+  r.clampedVolume = Math.min(r.volume, 85);
+  if(gateEnabled[4] && polyCount >= MAX_POLYPHONY){
+    r.passed = false;
+    r.blockedBy = 'OUTPUT_FILTER';
+    stats.gateBlocks[4]++;
+    stats.blocked++;
+    addLog('block','OUTPUT_FILTER', `BLOCK - Polyphony limit ${MAX_POLYPHONY} reached (${polyCount} active)`);
+  }
+  r.lastGate = 'OUTPUT_FILTER';
+  return r;
+}
+
+function runGate5(r){
+  stats.gateChecks[5]++;
+  const totalVol = Array.from(activeVoices.values()).reduce((s,v) => s + (v.gain?.gain?.value||0), 0);
+  const estDb = 20 * Math.log10(Math.max(totalVol * (r.volume/100), 0.0001));
+  const tooLoud = estDb > -3;
+  const tooLowFreq = r.freq < 40;
+  const tooHighFreq = r.freq > 6000;
+  r.gate5checks = { estDb: estDb.toFixed(1), tooLoud, tooLowFreq, tooHighFreq };
+  if(gateEnabled[5] && tooLoud){
+    r.warned = true;
+    r.warnings.push('High dB level');
+    stats.gateWarns[5]++;
+    addLog('warn','SAFETY_MON', `WARN - Estimated ${estDb.toFixed(1)}dB, approaching limit`);
+  }
+  if(gateEnabled[5] && (tooLowFreq || tooHighFreq)){
+    r.warned = true;
+    r.warnings.push('Frequency balance concern');
+    addLog('warn','SAFETY_MON', `WARN - Freq ${Math.round(r.freq)}Hz outside balanced range`);
+  }
+  r.lastGate = 'SAFETY_MON';
+  return r;
+}
+
+function finalizeResult(r){
+  stats.blocked;
+  stats.recentBlocks.push(Date.now());
+  while(stats.recentBlocks.length > 50) stats.recentBlocks.shift();
+  updateDashboard();
+  // shake the blocking gate
+  if(r.blockedBy){
+    const gateMap = {INPUT_VALIDATOR:1,RATE_LIMITER:2,HARMONY_CHECK:3,OUTPUT_FILTER:4,SAFETY_MON:5};
+    const gn = gateMap[r.blockedBy];
+    if(gn){
+      const el = document.getElementById('gate'+gn);
+      el.classList.add('blocked');
+      setTimeout(()=>el.classList.remove('blocked'),400);
+    }
+  }
+}
+
+// ========== GATE UI UPDATES ==========
+function updateGateUI(n, result){
+  const statusEl = document.getElementById(`gate${n}-status`);
+  const checksEl = document.getElementById(`gate${n}-checks`);
+  document.getElementById(`gate${n}-checks-count`).textContent = stats.gateChecks[n];
+  if(n===1){
+    if(result.gate1checks){
+      checksEl.innerHTML = result.gate1checks.map(c =>
+        `<div class="check-item"><span class="${c.ok?'check-pass':'check-fail'}">${c.ok?'&#10003;':'&#10007;'}</span> ${c.label}</div>`
+      ).join('');
+    }
+    const blocked = !result.passed && result.blockedBy === 'INPUT_VALIDATOR';
+    statusEl.textContent = blocked ? 'BLOCK' : 'PASS';
+    statusEl.className = `gate-status ${blocked?'block':'pass'}`;
+    document.getElementById('gate1-blocks').textContent = stats.gateBlocks[1];
+  }
+  if(n===2){
+    const rate = result.gate2rate || rateHistory.length;
+    checksEl.innerHTML = `
+      <div class="check-item"><span class="${rate<=MAX_RATE?'check-pass':'check-fail'}">${rate<=MAX_RATE?'&#10003;':'&#10007;'}</span> Rate: <b>${rate}</b>/${MAX_RATE} notes/sec</div>
+      <div class="check-item"><span class="${rate<=MAX_RATE?'check-pass':'check-warn'}">${rate>MAX_RATE*0.75?'&#9888;':'&#10003;'}</span> Burst detection</div>`;
+    const blocked = !result.passed && result.blockedBy === 'RATE_LIMITER';
+    statusEl.textContent = blocked ? 'BLOCK' : (rate > MAX_RATE*0.75 ? 'WARN' : 'PASS');
+    statusEl.className = `gate-status ${blocked?'block':(rate>MAX_RATE*0.75?'warn':'pass')}`;
+    document.getElementById('gate2-blocks').textContent = stats.gateBlocks[2];
+  }
+  if(n===3){
+    const d = result.gate3dissonant;
+    checksEl.innerHTML = `
+      <div class="check-item"><span class="${!d?'check-pass':'check-warn'}">${d?'&#9888;':'&#10003;'}</span> Interval consonance</div>
+      <div class="check-item"><span class="check-pass">&#10003;</span> Active voices: <b>${document.getElementById('harmonyVoices').textContent}</b></div>`;
+    statusEl.textContent = d ? 'WARN' : 'PASS';
+    statusEl.className = `gate-status ${d?'warn':'pass'}`;
+    document.getElementById('gate3-warns').textContent = stats.gateWarns[3];
+  }
+  if(n===4){
+    const polyCount = activeVoices.size;
+    const blocked = !result.passed && result.blockedBy === 'OUTPUT_FILTER';
+    checksEl.innerHTML = `
+      <div class="check-item"><span class="check-pass">&#10003;</span> Volume clamped to ${result.clampedVolume||result.volume}%</div>
+      <div class="check-item"><span class="${polyCount<MAX_POLYPHONY?'check-pass':'check-fail'}">${polyCount<MAX_POLYPHONY?'&#10003;':'&#10007;'}</span> Polyphony: <b>${polyCount}</b>/${MAX_POLYPHONY}</div>
+      <div class="check-item"><span class="check-pass">&#10003;</span> Limiter applied</div>`;
+    statusEl.textContent = blocked ? 'BLOCK' : 'PASS';
+    statusEl.className = `gate-status ${blocked?'block':'pass'}`;
+    document.getElementById('gate4-blocks').textContent = stats.gateBlocks[4];
+  }
+  if(n===5){
+    const c = result.gate5checks || {};
+    checksEl.innerHTML = `
+      <div class="check-item"><span class="${!c.tooLoud?'check-pass':'check-warn'}">${c.tooLoud?'&#9888;':'&#10003;'}</span> dB level: ${c.estDb||'--'}dB</div>
+      <div class="check-item"><span class="${!c.tooLowFreq&&!c.tooHighFreq?'check-pass':'check-warn'}">${c.tooLowFreq||c.tooHighFreq?'&#9888;':'&#10003;'}</span> Freq balance</div>
+      <div class="check-item"><span class="check-pass">&#10003;</span> Duration limit</div>`;
+    const hasWarn = c.tooLoud || c.tooLowFreq || c.tooHighFreq;
+    statusEl.textContent = hasWarn ? 'WARN' : 'PASS';
+    statusEl.className = `gate-status ${hasWarn?'warn':'pass'}`;
+    document.getElementById('gate5-blocks').textContent = stats.gateBlocks[5];
+  }
+  // Auto-reset to idle after a bit
+  setTimeout(()=>{
+    if(statusEl.textContent !== 'IDLE'){
+      statusEl.textContent = 'IDLE';
+      statusEl.className = 'gate-status idle';
+    }
+  }, 1500);
+}
+
+// ========== PULSE ANIMATION ==========
+function animatePulse(result){
+  const pipeline = document.getElementById('pipeline');
+  const dot = document.createElement('div');
+  dot.className = 'pulse-dot';
+  dot.style.left = '0px';
+  pipeline.style.position = 'relative';
+  pipeline.appendChild(dot);
+  const totalWidth = pipeline.offsetWidth;
+  const duration = 600;
+  const start = performance.now();
+  function animate(t){
+    const elapsed = t - start;
+    const progress = Math.min(elapsed / duration, 1);
+    dot.style.left = (progress * totalWidth) + 'px';
+    if(!result.passed && result.blockedBy){
+      const gatePositions = {INPUT_VALIDATOR:0.1,RATE_LIMITER:0.3,OUTPUT_FILTER:0.7,SAFETY_MON:0.9};
+      const blockPos = gatePositions[result.blockedBy] || 0.5;
+      if(progress >= blockPos){
+        dot.classList.add('blocked');
+        dot.style.left = (blockPos * totalWidth) + 'px';
+        setTimeout(()=>dot.remove(), 500);
+        return;
+      }
+    }
+    if(result.warned && !dot.classList.contains('warned')){
+      dot.classList.add('warned');
+    }
+    if(progress < 1) requestAnimationFrame(animate);
+    else setTimeout(()=>dot.remove(), 200);
+  }
+  requestAnimationFrame(animate);
+}
+
+// ========== DASHBOARD ==========
+function updateDashboard(){
+  document.getElementById('totalPlayed').textContent = stats.played;
+  document.getElementById('totalBlocked').textContent = stats.blocked;
+  document.getElementById('totalWarned').textContent = stats.warned;
+
+  // Block rates
+  const total = stats.played + stats.blocked;
+  for(let i=1;i<=5;i++){
+    const rate = total > 0 ? Math.round(stats.gateBlocks[i]/total*100) : 0;
+    document.getElementById('br'+i).style.width = rate+'%';
+    document.getElementById('brv'+i).textContent = rate+'%';
+  }
+
+  // Threat level
+  const now = Date.now();
+  const recentBlocks = stats.recentBlocks.filter(t => t > now - 5000).length;
+  const threatPct = Math.min(recentBlocks / 10 * 100, 100);
+  const fill = document.getElementById('threatFill');
+  const label = document.getElementById('threatLabel');
+  fill.style.width = threatPct + '%';
+  if(threatPct < 30){
+    fill.className = 'threat-fill low'; label.textContent = 'LOW'; label.style.color = '#4caf50';
+  } else if(threatPct < 70){
+    fill.className = 'threat-fill medium'; label.textContent = 'MEDIUM'; label.style.color = '#ffc107';
+  } else {
+    fill.className = 'threat-fill high'; label.textContent = 'HIGH'; label.style.color = '#f44336';
+  }
+}
+
+// ========== EVENT LOG ==========
+function addLog(type, gate, message){
+  const logEl = document.getElementById('logEntries');
+  const time = new Date().toLocaleTimeString('en-US',{hour12:false});
+  const entry = document.createElement('div');
+  entry.className = `log-entry ${type}`;
+  entry.innerHTML = `<span class="log-time">[${time}]</span> <span class="log-gate">${gate}:</span> ${message}`;
+  logEl.insertBefore(entry, logEl.firstChild);
+  // Keep max 100 entries
+  while(logEl.children.length > 100) logEl.removeChild(logEl.lastChild);
+}
+
+// ========== TEST BUTTONS ==========
+function stressTest(){
+  addLog('warn','SYSTEM','Stress test initiated - rapid fire 20 notes');
+  const notes = Object.keys(baseFreqs).filter(n=>n.includes('4'));
+  let i = 0;
+  const iv = setInterval(()=>{
+    if(i >= 20){ clearInterval(iv); return; }
+    const note = notes[Math.floor(Math.random()*notes.length)];
+    const el = document.querySelector(`.piano-key[data-note="${note}"]`);
+    triggerNote(note, el);
+    if(el) setTimeout(()=>el.classList.remove('active'),80);
+    i++;
+  }, 80);
+}
+
+function dissonanceTest(){
+  addLog('warn','SYSTEM','Dissonance test - tritone + minor 2nd cluster');
+  // Play C4, F#4 (tritone), C#4 (minor 2nd) simultaneously
+  triggerNote('C4', document.querySelector('[data-note="C4"]'));
+  setTimeout(()=> triggerNote('F#4', document.querySelector('[data-note="F#4"]')), 100);
+  setTimeout(()=> triggerNote('C#4', document.querySelector('[data-note="C#4"]')), 200);
+  setTimeout(()=>{
+    document.querySelectorAll('.piano-key.active').forEach(k=>k.classList.remove('active'));
+  }, 600);
+}
+
+function volumeSpike(){
+  addLog('warn','SYSTEM','Volume spike test - setting volume to 100%');
+  volCtrl.value = 100;
+  document.getElementById('volVal').textContent = '100%';
+  triggerNote('A4', document.querySelector('[data-note="A4"]'));
+  setTimeout(()=>{
+    document.querySelectorAll('.piano-key.active').forEach(k=>k.classList.remove('active'));
+  }, 400);
+}
+
+function resetStats(){
+  stats.played = 0; stats.blocked = 0; stats.warned = 0;
+  stats.gateChecks.fill(0); stats.gateBlocks.fill(0); stats.gateWarns.fill(0);
+  stats.recentBlocks = [];
+  document.getElementById('logEntries').innerHTML = '';
+  for(let i=1;i<=5;i++){
+    document.getElementById(`gate${i}-checks-count`).textContent = '0';
+    const bkey = i===3?'warns':'blocks';
+    const bel = document.getElementById(`gate${i}-${bkey}`);
+    if(bel) bel.textContent = '0';
+    if(document.getElementById(`gate${i}-blocks`)) document.getElementById(`gate${i}-blocks`).textContent = '0';
+  }
+  updateDashboard();
+  addLog('pass','SYSTEM','Stats reset');
+}
+
+// ========== VISUALIZATION ==========
+function startVisualization(){
+  const waveCanvas = document.getElementById('waveCanvas');
+  const specCanvas = document.getElementById('spectrumCanvas');
+  const wCtx = waveCanvas.getContext('2d');
+  const sCtx = specCanvas.getContext('2d');
+
+  function resize(){
+    waveCanvas.width = waveCanvas.offsetWidth;
+    waveCanvas.height = waveCanvas.offsetHeight;
+    specCanvas.width = specCanvas.offsetWidth;
+    specCanvas.height = specCanvas.offsetHeight;
+  }
+  resize();
+  window.addEventListener('resize', resize);
+
+  const waveData = new Uint8Array(analyserWave.fftSize);
+  const specData = new Uint8Array(analyserSpec.frequencyBinCount);
+
+  function draw(){
+    // Waveform
+    analyserWave.getByteTimeDomainData(waveData);
+    wCtx.fillStyle = '#080810';
+    wCtx.fillRect(0,0,waveCanvas.width,waveCanvas.height);
+    wCtx.beginPath();
+    wCtx.strokeStyle = '#4fc3f7';
+    wCtx.lineWidth = 1.5;
+    const sliceW = waveCanvas.width / waveData.length;
+    for(let i=0;i<waveData.length;i++){
+      const v = waveData[i]/128.0;
+      const y = v * waveCanvas.height/2;
+      if(i===0) wCtx.moveTo(0,y); else wCtx.lineTo(i*sliceW,y);
+    }
+    wCtx.stroke();
+
+    // Spectrum
+    analyserSpec.getByteFrequencyData(specData);
+    sCtx.fillStyle = '#080810';
+    sCtx.fillRect(0,0,specCanvas.width,specCanvas.height);
+    const barW = specCanvas.width / specData.length * 2;
+    for(let i=0;i<specData.length/2;i++){
+      const h = (specData[i]/255) * specCanvas.height;
+      const hue = (i/specData.length*2)*280;
+      sCtx.fillStyle = `hsl(${hue},80%,50%)`;
+      sCtx.fillRect(i*barW, specCanvas.height - h, barW-1, h);
+    }
+
+    requestAnimationFrame(draw);
+  }
+  draw();
+}
+
+// ========== INIT ==========
+addLog('pass','SYSTEM','Guarded Synth initialized - all 5 guardrail layers active');
+addLog('pass','SYSTEM','Click piano keys or use keyboard A-L to play notes');
+
+// Periodic UI refresh for voice count
+setInterval(()=>{
+  document.getElementById('harmonyVoices').textContent = activeVoices.size;
+  document.getElementById('polyCount').textContent = activeVoices.size;
+  // Update rate display decay
+  const now = Date.now();
+  while(rateHistory.length && rateHistory[0] < now - 1000) rateHistory.shift();
+  document.getElementById('rateCounter').textContent = rateHistory.length;
+},200);
+</script>
+</body>
+</html>

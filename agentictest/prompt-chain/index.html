@@ -1,0 +1,776 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Tone Chain - Prompt Chaining Pattern</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a12;
+    color: #e0e0e0;
+    font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+  #header {
+    text-align: center;
+    padding: 18px 0 6px 0;
+    z-index: 10;
+  }
+  #header h1 {
+    font-size: 28px;
+    letter-spacing: 3px;
+    background: linear-gradient(90deg, #00f0ff, #ff00e6, #ffe600);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    text-transform: uppercase;
+  }
+  #header p {
+    font-size: 13px;
+    color: #8888aa;
+    margin-top: 4px;
+    font-style: italic;
+  }
+  #mainCanvas {
+    display: block;
+  }
+  #controls {
+    position: fixed;
+    bottom: 20px;
+    display: flex;
+    gap: 16px;
+    align-items: center;
+    z-index: 10;
+  }
+  .btn {
+    padding: 12px 32px;
+    font-size: 16px;
+    font-weight: bold;
+    letter-spacing: 2px;
+    text-transform: uppercase;
+    border: none;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.2s;
+  }
+  #generateBtn {
+    background: linear-gradient(135deg, #00f0ff, #007aff);
+    color: #000;
+    box-shadow: 0 0 20px rgba(0,240,255,0.4);
+  }
+  #generateBtn:hover { box-shadow: 0 0 35px rgba(0,240,255,0.7); transform: scale(1.05); }
+  #generateBtn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; box-shadow: none; }
+  #stopBtn {
+    background: linear-gradient(135deg, #ff3366, #aa0033);
+    color: #fff;
+    box-shadow: 0 0 15px rgba(255,51,102,0.3);
+  }
+  #stopBtn:hover { box-shadow: 0 0 30px rgba(255,51,102,0.6); transform: scale(1.05); }
+  select {
+    padding: 10px 14px;
+    font-size: 14px;
+    background: #16162a;
+    color: #00f0ff;
+    border: 1px solid #00f0ff44;
+    border-radius: 6px;
+    cursor: pointer;
+  }
+</style>
+</head>
+<body>
+<div id="header">
+  <h1>Tone Chain</h1>
+  <p>Prompt Chaining Pattern &mdash; each stage transforms and forwards to the next</p>
+</div>
+<canvas id="mainCanvas"></canvas>
+<div id="controls">
+  <select id="waveformSelect">
+    <option value="sine">Sine Wave</option>
+    <option value="square">Square Wave</option>
+    <option value="sawtooth">Sawtooth Wave</option>
+    <option value="triangle">Triangle Wave</option>
+  </select>
+  <button class="btn" id="generateBtn">Generate</button>
+  <button class="btn" id="stopBtn">Stop</button>
+</div>
+
+<script>
+// ===================== CANVAS SETUP =====================
+const canvas = document.getElementById('mainCanvas');
+const ctx = canvas.getContext('2d');
+let W, H;
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ===================== NODE DEFINITIONS =====================
+const nodeColors = ['#00f0ff', '#00f0ff', '#ff00e6', '#ffe600', '#00f0ff', '#ff00e6'];
+const nodeNames = ['SOURCE', 'PITCH SHIFT', 'FILTER', 'DELAY', 'REVERB', 'OUTPUT'];
+const nodeParams = [
+  { label: 'Freq (Hz)', min: 80, max: 880, value: 220, step: 1 },
+  { label: 'Shift (semi)', min: -12, max: 12, value: 0, step: 1 },
+  { label: 'Cutoff (Hz)', min: 100, max: 8000, value: 3000, step: 10 },
+  { label: 'Time (ms)', min: 50, max: 800, value: 300, step: 10 },
+  { label: 'Decay (s)', min: 0.1, max: 4.0, value: 1.5, step: 0.1 },
+  { label: 'Volume', min: 0, max: 100, value: 70, step: 1 },
+];
+
+const NUM_NODES = 6;
+let nodes = [];
+let activeNode = -1; // which node is currently processing
+let chainRunning = false;
+let particles = [];
+let dragSlider = null; // {nodeIdx, startY, startVal}
+let hoverNode = -1;
+
+function layoutNodes() {
+  const padX = 100;
+  const usableW = W - padX * 2;
+  const spacing = usableW / (NUM_NODES - 1);
+  const cy = H * 0.45;
+  for (let i = 0; i < NUM_NODES; i++) {
+    if (nodes[i]) {
+      // Preserve param values and glow on resize
+      nodes[i].x = padX + i * spacing;
+      nodes[i].y = cy;
+      nodes[i].radius = Math.min(48, W / 22);
+    } else {
+      nodes.push({
+        x: padX + i * spacing,
+        y: cy,
+        radius: Math.min(48, W / 22),
+        color: nodeColors[i],
+        name: nodeNames[i],
+        param: { ...nodeParams[i] },
+        glow: 0,
+        pulsePhase: Math.random() * Math.PI * 2,
+      });
+    }
+  }
+}
+layoutNodes();
+window.addEventListener('resize', () => { resize(); layoutNodes(); });
+
+// ===================== PARTICLES =====================
+function spawnParticle(fromIdx, toIdx) {
+  const f = nodes[fromIdx], t = nodes[toIdx];
+  for (let i = 0; i < 6; i++) {
+    particles.push({
+      sx: f.x, sy: f.y,
+      x: f.x, y: f.y,
+      tx: t.x, ty: t.y,
+      progress: 0,
+      speed: 0.012 + Math.random() * 0.008,
+      color: f.color,
+      size: 3 + Math.random() * 3,
+      offsetY: (Math.random() - 0.5) * 20,
+    });
+  }
+}
+
+function spawnContinuousParticles() {
+  if (!chainRunning) return;
+  // spawn from active node toward next
+  if (activeNode >= 0 && activeNode < NUM_NODES - 1) {
+    if (Math.random() < 0.3) {
+      spawnParticle(activeNode, activeNode + 1);
+    }
+  }
+}
+
+// ===================== WAVEFORM DISPLAY =====================
+let waveformData = new Float32Array(256).fill(0);
+let analyserNode = null;
+
+// ===================== DRAWING =====================
+function drawGlowLine(x1, y1, x2, y2, color, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 16;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function drawNode(node, idx) {
+  const { x, y, radius, color, name, param, glow } = node;
+  const t = performance.now() / 1000;
+
+  // Outer glow ring
+  const glowIntensity = glow * 0.8 + 0.1 + Math.sin(t * 2 + node.pulsePhase) * 0.05;
+  ctx.save();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 20 + glow * 40;
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = glowIntensity;
+  ctx.lineWidth = 2 + glow * 2;
+  ctx.beginPath();
+  ctx.arc(x, y, radius + 4, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
+
+  // Fill
+  ctx.save();
+  const grad = ctx.createRadialGradient(x, y, 0, x, y, radius);
+  grad.addColorStop(0, color + '33');
+  grad.addColorStop(0.7, color + '11');
+  grad.addColorStop(1, color + '05');
+  ctx.fillStyle = grad;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Border
+  ctx.strokeStyle = color;
+  ctx.globalAlpha = 0.5 + glow * 0.5;
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.restore();
+
+  // Active processing indicator
+  if (idx === activeNode) {
+    ctx.save();
+    ctx.strokeStyle = '#ffffff';
+    ctx.globalAlpha = 0.3 + Math.sin(t * 8) * 0.3;
+    ctx.lineWidth = 3;
+    ctx.setLineDash([4, 4]);
+    ctx.lineDashOffset = -t * 40;
+    ctx.beginPath();
+    ctx.arc(x, y, radius + 10, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  // Node icon/symbol inside
+  const icons = ['\u266A', '\u2195', '\u25B3', '\u2261', '\u2248', '\u25C9'];
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.6 + glow * 0.4;
+  ctx.font = `${Math.max(16, radius * 0.6)}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(icons[idx], x, y);
+  ctx.restore();
+
+  // Stage number badge
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.4;
+  ctx.font = `bold ${Math.max(9, radius / 4)}px monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillText(`${idx + 1}/${NUM_NODES}`, x, y + radius * 0.5);
+  ctx.restore();
+
+  // Name label
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.9;
+  ctx.font = `bold ${Math.max(10, radius / 3.5)}px 'Segoe UI', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.shadowColor = color;
+  ctx.shadowBlur = glow * 12;
+  ctx.fillText(name, x, y - radius - 16);
+  ctx.restore();
+
+  // Parameter slider
+  drawSlider(node, idx);
+}
+
+function drawSlider(node, idx) {
+  const { x, y, radius, color, param } = node;
+  const sliderX = x;
+  const sliderTop = y + radius + 18;
+  const sliderH = 60;
+  const sliderW = 6;
+  const knobR = 7;
+
+  const pct = (param.value - param.min) / (param.max - param.min);
+
+  // Track
+  ctx.save();
+  ctx.strokeStyle = color + '44';
+  ctx.lineWidth = sliderW;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(sliderX, sliderTop);
+  ctx.lineTo(sliderX, sliderTop + sliderH);
+  ctx.stroke();
+
+  // Filled portion
+  ctx.strokeStyle = color + 'aa';
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.moveTo(sliderX, sliderTop + sliderH);
+  ctx.lineTo(sliderX, sliderTop + sliderH - pct * sliderH);
+  ctx.stroke();
+  ctx.shadowBlur = 0;
+
+  // Knob
+  const knobY = sliderTop + sliderH - pct * sliderH;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(sliderX, knobY, knobR, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Value text
+  ctx.fillStyle = '#bbbbcc';
+  ctx.font = '10px monospace';
+  ctx.textAlign = 'center';
+  let dispVal = param.value;
+  if (param.step >= 1) dispVal = Math.round(dispVal);
+  else dispVal = dispVal.toFixed(1);
+  ctx.fillText(`${dispVal}`, sliderX, sliderTop + sliderH + 16);
+  ctx.fillStyle = '#666680';
+  ctx.fillText(param.label, sliderX, sliderTop + sliderH + 28);
+  ctx.restore();
+
+  // Store hit area for interaction
+  node._sliderBounds = {
+    x: sliderX - 15,
+    y: sliderTop - 5,
+    w: 30,
+    h: sliderH + 10,
+    top: sliderTop,
+    height: sliderH,
+  };
+}
+
+function drawConnections() {
+  for (let i = 0; i < nodes.length - 1; i++) {
+    const a = nodes[i], b = nodes[i + 1];
+    const alpha = (activeNode >= i && activeNode >= 0) ? 0.7 : 0.2;
+    drawGlowLine(a.x + a.radius + 6, a.y, b.x - b.radius - 6, b.y, a.color, alpha);
+
+    // Arrow head
+    const ax = b.x - b.radius - 10;
+    const ay = b.y;
+    ctx.save();
+    ctx.fillStyle = a.color;
+    ctx.globalAlpha = alpha;
+    ctx.beginPath();
+    ctx.moveTo(ax + 8, ay);
+    ctx.lineTo(ax, ay - 5);
+    ctx.lineTo(ax, ay + 5);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawParticles() {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.progress += p.speed;
+    if (p.progress >= 1) { particles.splice(i, 1); continue; }
+    const ease = p.progress < 0.5 ? 2 * p.progress * p.progress : 1 - Math.pow(-2 * p.progress + 2, 2) / 2;
+    p.x = p.sx + (p.tx - p.sx) * ease;
+    p.y = p.sy + (p.ty - p.sy) * ease + p.offsetY * Math.sin(p.progress * Math.PI);
+
+    ctx.save();
+    ctx.globalAlpha = 1 - p.progress * 0.6;
+    ctx.fillStyle = p.color;
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size * (1 - p.progress * 0.4), 0, Math.PI * 2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+function drawWaveform() {
+  if (!analyserNode) return;
+  analyserNode.getFloatTimeDomainData(waveformData);
+
+  const waveY = H * 0.78;
+  const waveW = W * 0.7;
+  const waveX = (W - waveW) / 2;
+  const waveH = 50;
+
+  ctx.save();
+  ctx.strokeStyle = '#00f0ff';
+  ctx.globalAlpha = 0.6;
+  ctx.lineWidth = 1.5;
+  ctx.shadowColor = '#00f0ff';
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  for (let i = 0; i < waveformData.length; i++) {
+    const x = waveX + (i / waveformData.length) * waveW;
+    const y = waveY + waveformData[i] * waveH;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+
+  // Label
+  ctx.globalAlpha = 0.3;
+  ctx.fillStyle = '#8888aa';
+  ctx.font = '11px monospace';
+  ctx.textAlign = 'center';
+  ctx.fillText('OUTPUT WAVEFORM', W / 2, waveY + waveH + 18);
+  ctx.restore();
+}
+
+function drawBackground() {
+  ctx.fillStyle = '#0a0a12';
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle grid
+  ctx.save();
+  ctx.strokeStyle = '#ffffff06';
+  ctx.lineWidth = 1;
+  const gs = 40;
+  for (let x = 0; x < W; x += gs) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let y = 0; y < H; y += gs) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// ===================== MAIN LOOP =====================
+function frame() {
+  drawBackground();
+  drawConnections();
+  nodes.forEach((n, i) => {
+    // Animate glow
+    const target = (i === activeNode) ? 1 : (chainRunning && i < activeNode ? 0.4 : 0.1);
+    n.glow += (target - n.glow) * 0.08;
+    drawNode(n, i);
+  });
+  spawnContinuousParticles();
+  drawParticles();
+  drawWaveform();
+  requestAnimationFrame(frame);
+}
+frame();
+
+// ===================== SLIDER INTERACTION =====================
+canvas.addEventListener('mousedown', (e) => {
+  const mx = e.clientX, my = e.clientY;
+  for (let i = 0; i < nodes.length; i++) {
+    const b = nodes[i]._sliderBounds;
+    if (b && mx >= b.x && mx <= b.x + b.w && my >= b.y && my <= b.y + b.h) {
+      dragSlider = { nodeIdx: i, bounds: b };
+      updateSliderFromMouse(my, i, b);
+      e.preventDefault();
+      return;
+    }
+  }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  if (dragSlider) {
+    updateSliderFromMouse(e.clientY, dragSlider.nodeIdx, dragSlider.bounds);
+    e.preventDefault();
+  }
+});
+
+window.addEventListener('mouseup', () => { dragSlider = null; });
+
+function updateSliderFromMouse(my, idx, b) {
+  const pct = 1 - Math.max(0, Math.min(1, (my - b.top) / b.height));
+  const p = nodes[idx].param;
+  let val = p.min + pct * (p.max - p.min);
+  val = Math.round(val / p.step) * p.step;
+  val = Math.max(p.min, Math.min(p.max, val));
+  nodes[idx].param.value = val;
+}
+
+// ===================== WEB AUDIO ENGINE =====================
+let audioCtx = null;
+let currentSources = [];
+
+function ensureAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  if (audioCtx.state === 'suspended') audioCtx.resume();
+}
+
+function stopAll() {
+  currentSources.forEach(s => {
+    try { s.stop(); } catch(e) {}
+    try { s.disconnect(); } catch(e) {}
+  });
+  currentSources = [];
+  chainRunning = false;
+  activeNode = -1;
+  analyserNode = null;
+  document.getElementById('generateBtn').disabled = false;
+}
+
+async function runChain() {
+  ensureAudio();
+  stopAll();
+  chainRunning = true;
+  document.getElementById('generateBtn').disabled = true;
+
+  const waveform = document.getElementById('waveformSelect').value;
+  const baseFreq = nodes[0].param.value;
+  const pitchShiftSemis = nodes[1].param.value;
+  const filterCutoff = nodes[2].param.value;
+  const delayTime = nodes[3].param.value / 1000;
+  const reverbDecay = nodes[4].param.value;
+  const volume = nodes[5].param.value / 100;
+
+  const shiftedFreq = baseFreq * Math.pow(2, pitchShiftSemis / 12);
+
+  // Duration for each stage "processing" visualization
+  const stageDur = 0.6;
+  const totalDur = 3.5;
+
+  // Stage 1: SOURCE - raw oscillator
+  activeNode = 0;
+  spawnBurst(0);
+  const osc1 = audioCtx.createOscillator();
+  osc1.type = waveform;
+  osc1.frequency.value = baseFreq;
+  const gain1 = audioCtx.createGain();
+  gain1.gain.value = volume * 0.5;
+  const analyser1 = audioCtx.createAnalyser();
+  analyser1.fftSize = 512;
+  waveformData = new Float32Array(analyser1.frequencyBinCount);
+  osc1.connect(gain1).connect(analyser1).connect(audioCtx.destination);
+  analyserNode = analyser1;
+  osc1.start();
+  currentSources.push(osc1);
+  await wait(stageDur * 1000);
+  if (!chainRunning) return;
+  osc1.stop();
+
+  // Stage 2: PITCH SHIFT
+  activeNode = 1;
+  spawnBurst(1);
+  const osc2 = audioCtx.createOscillator();
+  osc2.type = waveform;
+  osc2.frequency.value = shiftedFreq;
+  const gain2 = audioCtx.createGain();
+  gain2.gain.value = volume * 0.5;
+  const analyser2 = audioCtx.createAnalyser();
+  analyser2.fftSize = 512;
+  waveformData = new Float32Array(analyser2.frequencyBinCount);
+  osc2.connect(gain2).connect(analyser2).connect(audioCtx.destination);
+  analyserNode = analyser2;
+  osc2.start();
+  currentSources.push(osc2);
+  await wait(stageDur * 1000);
+  if (!chainRunning) return;
+  osc2.stop();
+
+  // Stage 3: FILTER
+  activeNode = 2;
+  spawnBurst(2);
+  const osc3 = audioCtx.createOscillator();
+  osc3.type = waveform;
+  osc3.frequency.value = shiftedFreq;
+  const filter3 = audioCtx.createBiquadFilter();
+  filter3.type = 'lowpass';
+  filter3.frequency.value = filterCutoff;
+  filter3.Q.value = 2;
+  const gain3 = audioCtx.createGain();
+  gain3.gain.value = volume * 0.5;
+  const analyser3 = audioCtx.createAnalyser();
+  analyser3.fftSize = 512;
+  waveformData = new Float32Array(analyser3.frequencyBinCount);
+  osc3.connect(filter3).connect(gain3).connect(analyser3).connect(audioCtx.destination);
+  analyserNode = analyser3;
+  osc3.start();
+  currentSources.push(osc3);
+  await wait(stageDur * 1000);
+  if (!chainRunning) return;
+  osc3.stop();
+
+  // Stage 4: DELAY
+  activeNode = 3;
+  spawnBurst(3);
+  const osc4 = audioCtx.createOscillator();
+  osc4.type = waveform;
+  osc4.frequency.value = shiftedFreq;
+  const filter4 = audioCtx.createBiquadFilter();
+  filter4.type = 'lowpass';
+  filter4.frequency.value = filterCutoff;
+  filter4.Q.value = 2;
+  const delay4 = audioCtx.createDelay(1.0);
+  delay4.delayTime.value = delayTime;
+  const feedback4 = audioCtx.createGain();
+  feedback4.gain.value = 0.4;
+  const gain4 = audioCtx.createGain();
+  gain4.gain.value = volume * 0.5;
+  const analyser4 = audioCtx.createAnalyser();
+  analyser4.fftSize = 512;
+  waveformData = new Float32Array(analyser4.frequencyBinCount);
+  osc4.connect(filter4).connect(delay4).connect(feedback4).connect(delay4);
+  filter4.connect(gain4);
+  delay4.connect(gain4);
+  gain4.connect(analyser4).connect(audioCtx.destination);
+  analyserNode = analyser4;
+  osc4.start();
+  currentSources.push(osc4);
+  await wait(stageDur * 1000 + delayTime * 1500);
+  if (!chainRunning) return;
+  osc4.stop();
+
+  // Stage 5: REVERB
+  activeNode = 4;
+  spawnBurst(4);
+  const osc5 = audioCtx.createOscillator();
+  osc5.type = waveform;
+  osc5.frequency.value = shiftedFreq;
+  const filter5 = audioCtx.createBiquadFilter();
+  filter5.type = 'lowpass';
+  filter5.frequency.value = filterCutoff;
+  const delay5 = audioCtx.createDelay(1.0);
+  delay5.delayTime.value = delayTime;
+  const feedback5 = audioCtx.createGain();
+  feedback5.gain.value = 0.3;
+  const convolver = audioCtx.createConvolver();
+  convolver.buffer = createReverbIR(reverbDecay);
+  const gain5 = audioCtx.createGain();
+  gain5.gain.value = volume * 0.5;
+  const wetGain = audioCtx.createGain();
+  wetGain.gain.value = 0.5;
+  const dryGain = audioCtx.createGain();
+  dryGain.gain.value = 0.5;
+  const analyser5 = audioCtx.createAnalyser();
+  analyser5.fftSize = 512;
+  waveformData = new Float32Array(analyser5.frequencyBinCount);
+
+  osc5.connect(filter5);
+  filter5.connect(delay5).connect(feedback5).connect(delay5);
+  filter5.connect(dryGain);
+  delay5.connect(dryGain);
+  dryGain.connect(gain5);
+  filter5.connect(convolver).connect(wetGain).connect(gain5);
+  gain5.connect(analyser5).connect(audioCtx.destination);
+  analyserNode = analyser5;
+  osc5.start();
+  currentSources.push(osc5);
+  await wait(stageDur * 1000 + reverbDecay * 400);
+  if (!chainRunning) return;
+  osc5.stop();
+
+  // Stage 6: OUTPUT - play the full chain together briefly
+  activeNode = 5;
+  spawnBurst(5);
+  const oscF = audioCtx.createOscillator();
+  oscF.type = waveform;
+  oscF.frequency.value = shiftedFreq;
+  const filterF = audioCtx.createBiquadFilter();
+  filterF.type = 'lowpass';
+  filterF.frequency.value = filterCutoff;
+  filterF.Q.value = 2;
+  const delayF = audioCtx.createDelay(1.0);
+  delayF.delayTime.value = delayTime;
+  const feedbackF = audioCtx.createGain();
+  feedbackF.gain.value = 0.35;
+  const convolverF = audioCtx.createConvolver();
+  convolverF.buffer = createReverbIR(reverbDecay);
+  const gainF = audioCtx.createGain();
+  gainF.gain.value = volume * 0.6;
+  const wetF = audioCtx.createGain();
+  wetF.gain.value = 0.4;
+  const dryF = audioCtx.createGain();
+  dryF.gain.value = 0.6;
+  const analyserF = audioCtx.createAnalyser();
+  analyserF.fftSize = 512;
+  waveformData = new Float32Array(analyserF.frequencyBinCount);
+
+  oscF.connect(filterF);
+  filterF.connect(delayF).connect(feedbackF).connect(delayF);
+  filterF.connect(dryF);
+  delayF.connect(dryF);
+  dryF.connect(gainF);
+  filterF.connect(convolverF).connect(wetF).connect(gainF);
+  gainF.connect(analyserF).connect(audioCtx.destination);
+  analyserNode = analyserF;
+
+  // Fade out at end
+  gainF.gain.setValueAtTime(volume * 0.6, audioCtx.currentTime);
+  gainF.gain.linearRampToValueAtTime(0, audioCtx.currentTime + 1.5);
+
+  oscF.start();
+  currentSources.push(oscF);
+  await wait(1800);
+  if (!chainRunning) return;
+  oscF.stop();
+
+  // Finished
+  chainRunning = false;
+  activeNode = -1;
+  document.getElementById('generateBtn').disabled = false;
+}
+
+function createReverbIR(decay) {
+  const rate = audioCtx.sampleRate;
+  const length = rate * decay;
+  const buffer = audioCtx.createBuffer(2, length, rate);
+  for (let ch = 0; ch < 2; ch++) {
+    const data = buffer.getChannelData(ch);
+    for (let i = 0; i < length; i++) {
+      data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / length, 2.5);
+    }
+  }
+  return buffer;
+}
+
+function spawnBurst(fromIdx) {
+  if (fromIdx < NUM_NODES - 1) {
+    for (let i = 0; i < 12; i++) {
+      spawnParticle(fromIdx, fromIdx + 1);
+    }
+  }
+  // Also spawn ring particles around the node
+  for (let i = 0; i < 8; i++) {
+    const angle = (i / 8) * Math.PI * 2;
+    const n = nodes[fromIdx];
+    const startX = n.x + Math.cos(angle) * n.radius;
+    const startY = n.y + Math.sin(angle) * n.radius;
+    particles.push({
+      sx: startX, sy: startY,
+      x: startX, y: startY,
+      tx: n.x + Math.cos(angle) * (n.radius + 40),
+      ty: n.y + Math.sin(angle) * (n.radius + 40),
+      progress: 0,
+      speed: 0.03,
+      color: n.color,
+      size: 2,
+      offsetY: 0,
+    });
+  }
+}
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+// ===================== BUTTON HANDLERS =====================
+document.getElementById('generateBtn').addEventListener('click', runChain);
+document.getElementById('stopBtn').addEventListener('click', stopAll);
+
+// Keyboard shortcut
+window.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' && !chainRunning) {
+    e.preventDefault();
+    runChain();
+  } else if (e.code === 'Escape') {
+    stopAll();
+  }
+});
+</script>
+</body>
+</html>

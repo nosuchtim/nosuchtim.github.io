@@ -1,0 +1,1440 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Composition Reasoner</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0a0a12;--panel:#11111d;--border:#1a1a2e;--text:#c8c8e0;
+  --accent:#6c63ff;--gold:#ffd700;--green:#00e676;--red:#ff5252;
+  --cyan:#00bcd4;--orange:#ff9800;--pink:#e040fb;
+}
+body{background:var(--bg);color:var(--text);font-family:'Segoe UI',system-ui,sans-serif;height:100vh;overflow:hidden;display:flex;flex-direction:column}
+h1{font-size:1.1rem;letter-spacing:2px;text-transform:uppercase;color:var(--accent)}
+h2{font-size:.85rem;letter-spacing:1.5px;text-transform:uppercase;color:#888;margin-bottom:8px}
+button{background:var(--accent);color:#fff;border:none;padding:8px 16px;border-radius:6px;cursor:pointer;font-size:.8rem;transition:all .2s}
+button:hover{filter:brightness(1.2);transform:translateY(-1px)}
+button:disabled{opacity:.4;cursor:default;transform:none}
+select,input[type=range]{background:#1a1a2e;color:var(--text);border:1px solid var(--border);border-radius:4px;padding:4px 8px;font-size:.75rem}
+input[type=range]{-webkit-appearance:none;height:6px;border:none;border-radius:3px}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:14px;height:14px;background:var(--accent);border-radius:50%;cursor:pointer}
+.header{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;border-bottom:1px solid var(--border);flex-shrink:0}
+.controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.controls label{font-size:.7rem;color:#888;display:flex;align-items:center;gap:4px}
+.main{display:flex;flex:1;overflow:hidden}
+.panel{border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.panel-header{padding:10px 12px;border-bottom:1px solid var(--border);flex-shrink:0}
+.panel-body{flex:1;overflow-y:auto;padding:10px 12px}
+.panel-body::-webkit-scrollbar{width:4px}
+.panel-body::-webkit-scrollbar-thumb{background:#333;border-radius:2px}
+#leftPanel{width:26%;min-width:220px}
+#centerPanel{flex:1;min-width:300px}
+#rightPanel{width:26%;min-width:220px;border-right:none}
+/* Chain of Thought cards */
+.cot-step{background:#161628;border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;opacity:0;transform:translateY(10px);transition:all .4s ease}
+.cot-step.visible{opacity:1;transform:translateY(0)}
+.cot-step.active{border-color:var(--accent);box-shadow:0 0 15px rgba(108,99,255,.3)}
+.cot-step .step-num{display:inline-block;background:var(--accent);color:#fff;width:22px;height:22px;border-radius:50%;text-align:center;line-height:22px;font-size:.7rem;font-weight:700;margin-right:6px}
+.cot-step .thought{font-size:.78rem;color:#aaa;margin:6px 0 4px 0;line-height:1.4}
+.cot-step .decision{font-size:.8rem;color:var(--gold);font-weight:600}
+.cot-step .decision::before{content:'-> '}
+/* Tree */
+#treeCanvas{width:100%;cursor:pointer}
+.tree-legend{display:flex;gap:12px;font-size:.65rem;color:#888;padding:6px 0}
+.tree-legend span::before{content:'';display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:4px;vertical-align:middle}
+.legend-explored::before{background:var(--cyan)}
+.legend-chosen::before{background:var(--gold)}
+.legend-unexplored::before{background:#444}
+/* ReAct log */
+.react-entry{padding:8px 0;border-bottom:1px solid #1a1a2e;font-size:.78rem;line-height:1.4;opacity:0;transform:translateX(10px);transition:all .3s ease}
+.react-entry.visible{opacity:1;transform:translateX(0)}
+.react-entry .tag{font-weight:700;margin-right:4px}
+.react-entry .tag.observe{color:var(--cyan)}
+.react-entry .tag.think{color:var(--orange)}
+.react-entry .tag.act{color:var(--green)}
+.react-entry .tag.correct{color:var(--pink)}
+/* Bottom piano roll */
+.bottom{height:160px;border-top:1px solid var(--border);flex-shrink:0;display:flex;flex-direction:column;overflow:hidden}
+.bottom-header{display:flex;align-items:center;justify-content:space-between;padding:6px 16px;border-bottom:1px solid var(--border)}
+#pianoRoll{flex:1;overflow-x:auto;overflow-y:hidden;position:relative}
+#pianoCanvas{display:block}
+/* Export area */
+#exportArea{display:none;position:fixed;top:50%;left:50%;transform:translate(-50%,-50%);background:#161628;border:2px solid var(--accent);border-radius:12px;padding:20px;z-index:100;max-width:500px;width:90%;max-height:70vh;overflow-y:auto}
+#exportArea pre{font-size:.75rem;background:#0a0a12;padding:10px;border-radius:6px;white-space:pre-wrap;margin:10px 0}
+#overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:99}
+.status-bar{font-size:.7rem;color:#666;padding:4px 16px;border-top:1px solid var(--border);text-align:center;flex-shrink:0;display:flex;align-items:center;justify-content:center;gap:12px}
+.progress-ring{width:18px;height:18px;border:2px solid var(--border);border-top-color:var(--accent);border-radius:50%;display:none}
+.progress-ring.active{display:inline-block;animation:spin .8s linear infinite}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes pulse{0%,100%{box-shadow:0 0 8px rgba(108,99,255,.2)}50%{box-shadow:0 0 20px rgba(108,99,255,.5)}}
+.cot-step.active{animation:pulse 1.5s ease infinite}
+/* Keyboard visualizer */
+.keyboard{display:flex;justify-content:center;padding:4px 8px;gap:1px;flex-shrink:0;border-top:1px solid var(--border)}
+.key-white{width:28px;height:50px;background:#e8e8e8;border:1px solid #999;border-radius:0 0 3px 3px;cursor:pointer;transition:background .15s}
+.key-black{width:18px;height:32px;background:#222;border:1px solid #111;border-radius:0 0 3px 3px;margin:0 -9px;z-index:1;cursor:pointer;transition:background .15s}
+.key-white.active{background:var(--accent)}
+.key-black.active{background:var(--cyan)}
+.key-white:hover{background:#ccc}.key-black:hover{background:#444}
+/* Phase indicator badges */
+.phase-badge{display:inline-block;padding:2px 8px;border-radius:10px;font-size:.65rem;font-weight:700;letter-spacing:1px;margin-left:8px}
+.phase-cot{background:rgba(108,99,255,.2);color:var(--accent)}
+.phase-tot{background:rgba(0,188,212,.2);color:var(--cyan)}
+.phase-react{background:rgba(0,230,118,.2);color:var(--green)}
+/* Confidence meter */
+.confidence-bar{height:3px;background:var(--border);border-radius:2px;margin-top:6px;overflow:hidden}
+.confidence-fill{height:100%;border-radius:2px;transition:width .4s ease;background:linear-gradient(90deg,var(--red),var(--orange),var(--green))}
+/* Particle canvas overlay */
+#particleCanvas{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:50}
+/* Self-correction highlight */
+.react-entry.correction{border-left:2px solid var(--pink);padding-left:8px;background:rgba(224,64,251,.05)}
+/* Stats counters */
+.stats-row{display:flex;gap:12px;font-size:.65rem;color:#666;margin-top:4px}
+.stats-row .stat{display:flex;align-items:center;gap:3px}
+.stats-row .stat-val{color:var(--accent);font-weight:700}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Composition Reasoner</h1>
+  <div class="controls">
+    <label>Key: <select id="keySelect">
+      <option value="C">C minor</option><option value="D" selected>D minor</option>
+      <option value="E">E minor</option><option value="G">G minor</option><option value="A">A minor</option>
+    </select></label>
+    <label>Speed: <select id="speedSelect">
+      <option value="1200">Slow</option><option value="700" selected>Medium</option><option value="350">Fast</option>
+    </select></label>
+    <label>Mode: <select id="modeSelect">
+      <option value="full">Full (CoT+ToT+ReAct)</option>
+      <option value="cot">CoT Only</option><option value="tot">ToT Only</option><option value="react">ReAct Only</option>
+    </select></label>
+    <label>Tempo: <input type="range" id="tempoSlider" min="60" max="180" value="110"> <span id="tempoVal">110</span></label>
+    <button id="btnStart">Start Reasoning</button>
+    <button id="btnReset" disabled>Reset</button>
+    <button id="btnPlay" disabled>Play Composition</button>
+    <button id="btnExport" disabled>Export</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="panel" id="leftPanel">
+    <div class="panel-header"><h2>Chain of Thought</h2></div>
+    <div class="panel-body" id="cotContainer"></div>
+  </div>
+  <div class="panel" id="centerPanel">
+    <div class="panel-header">
+      <h2>Thought Tree — Chord Exploration</h2>
+      <div class="tree-legend">
+        <span class="legend-unexplored">Unexplored</span>
+        <span class="legend-explored">Explored</span>
+        <span class="legend-chosen">Chosen Path</span>
+      </div>
+    </div>
+    <div class="panel-body" id="treeContainer">
+      <canvas id="treeCanvas"></canvas>
+    </div>
+  </div>
+  <div class="panel" id="rightPanel">
+    <div class="panel-header"><h2>ReAct Loop</h2></div>
+    <div class="panel-body" id="reactContainer"></div>
+  </div>
+</div>
+
+<div class="bottom">
+  <div class="bottom-header">
+    <h2 style="margin:0">Piano Roll / Notation</h2>
+    <span id="playbackPos" style="font-size:.7rem;color:#888">Bar 0 / 0</span>
+  </div>
+  <div id="pianoRoll"><canvas id="pianoCanvas"></canvas></div>
+</div>
+
+<div class="keyboard" id="keyboard"></div>
+<div class="status-bar" id="statusBar"><div class="progress-ring" id="progressRing"></div><span id="statusText">Ready. Select a key and click "Start Reasoning" to begin composition.</span></div>
+<canvas id="particleCanvas"></canvas>
+
+<div id="overlay" onclick="closeExport()"></div>
+<div id="exportArea">
+  <h2 style="color:var(--accent);margin-bottom:8px">Composition Export</h2>
+  <pre id="exportText"></pre>
+  <button onclick="closeExport()" style="margin-top:8px">Close</button>
+</div>
+
+<script>
+// ==================== MUSIC THEORY ENGINE ====================
+const KEYS = {
+  C:{root:'C',rootMidi:60,scale:[0,2,3,5,7,8,10],name:'C minor'},
+  D:{root:'D',rootMidi:62,scale:[0,2,3,5,7,8,10],name:'D minor'},
+  E:{root:'E',rootMidi:64,scale:[0,2,3,5,7,8,10],name:'E minor'},
+  G:{root:'G',rootMidi:67,scale:[0,2,3,5,7,8,10],name:'G minor'},
+  A:{root:'A',rootMidi:69,scale:[0,2,3,5,7,8,10],name:'A minor'}
+};
+const NOTE_NAMES=['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+const CHORD_QUALITIES={min:[0,3,7],maj:[0,4,7],dim:[0,3,6],aug:[0,4,8],min7:[0,3,7,10],maj7:[0,4,7,11],dom7:[0,4,7,10]};
+// Natural minor scale chord numerals: i, ii-dim, III, iv, v, VI, VII
+const SCALE_CHORDS=[
+  {deg:0,q:'min',num:'i'},{deg:2,q:'dim',num:'ii\u00B0'},{deg:3,q:'maj',num:'III'},
+  {deg:5,q:'min',num:'iv'},{deg:7,q:'min',num:'v'},{deg:8,q:'maj',num:'VI'},{deg:10,q:'maj',num:'VII'}
+];
+
+function midiToFreq(m){return 440*Math.pow(2,(m-69)/12)}
+function noteName(midi){return NOTE_NAMES[midi%12]+(Math.floor(midi/12)-1)}
+function noteNameSimple(midi){return NOTE_NAMES[midi%12]}
+function scaleNote(keyObj,degree){
+  const oct=Math.floor(degree/7);
+  const deg=((degree%7)+7)%7;
+  return keyObj.rootMidi+keyObj.scale[deg]+oct*12;
+}
+function getChordNotes(rootMidi,quality){
+  const q=CHORD_QUALITIES[quality]||CHORD_QUALITIES.min;
+  return q.map(i=>rootMidi+i);
+}
+function chordName(rootMidi,quality){
+  const n=noteNameSimple(rootMidi);
+  const suffixes={min:'m',maj:'',dim:'dim',aug:'aug',min7:'m7',maj7:'maj7',dom7:'7'};
+  return n+(suffixes[quality]||'');
+}
+function chordForDegree(keyObj,degIdx){
+  const sc=SCALE_CHORDS[degIdx];
+  return{root:keyObj.rootMidi+sc.deg,quality:sc.q,numeral:sc.num,name:chordName(keyObj.rootMidi+sc.deg,sc.q)};
+}
+
+// ==================== AUDIO ENGINE ====================
+let audioCtx=null;
+function ensureAudio(){if(!audioCtx)audioCtx=new(window.AudioContext||window.webkitAudioContext)();return audioCtx}
+
+function playNote(midi,duration=0.4,type='triangle',vol=0.15,startTime=null){
+  const ctx=ensureAudio();
+  const t=startTime||ctx.currentTime;
+  const osc=ctx.createOscillator();
+  const gain=ctx.createGain();
+  osc.type=type;
+  osc.frequency.setValueAtTime(midiToFreq(midi),t);
+  gain.gain.setValueAtTime(0,t);
+  gain.gain.linearRampToValueAtTime(vol,t+0.02);
+  gain.gain.setValueAtTime(vol,t+duration*0.7);
+  gain.gain.linearRampToValueAtTime(0,t+duration);
+  osc.connect(gain);gain.connect(ctx.destination);
+  osc.start(t);osc.stop(t+duration+0.05);
+}
+
+function playChord(rootMidi,quality,duration=0.8,vol=0.1,startTime=null){
+  const notes=getChordNotes(rootMidi,quality);
+  notes.forEach(n=>playNote(n,duration,'triangle',vol,startTime));
+}
+
+function playChordByName(rootMidi,quality){
+  playChord(rootMidi,quality,0.8,0.12);
+}
+
+let droneOscs=[];
+function startDrone(keyObj){
+  stopDrone();
+  const ctx=ensureAudio();
+  const root=keyObj.rootMidi-12;
+  [root,root+7].forEach(m=>{
+    const osc=ctx.createOscillator();
+    const gain=ctx.createGain();
+    osc.type='sine';
+    osc.frequency.setValueAtTime(midiToFreq(m),ctx.currentTime);
+    gain.gain.setValueAtTime(0,ctx.currentTime);
+    gain.gain.linearRampToValueAtTime(0.04,ctx.currentTime+1);
+    osc.connect(gain);gain.connect(ctx.destination);
+    osc.start();
+    droneOscs.push({osc,gain});
+  });
+}
+function stopDrone(){
+  const ctx=audioCtx;
+  if(!ctx)return;
+  droneOscs.forEach(d=>{
+    d.gain.gain.linearRampToValueAtTime(0,ctx.currentTime+0.5);
+    d.osc.stop(ctx.currentTime+0.6);
+  });
+  droneOscs=[];
+}
+
+// ==================== STATE ====================
+let state={
+  running:false,key:null,bars:4,
+  cotSteps:[],treeData:null,reactEntries:[],
+  chordProg:[],melody:[],
+  currentBar:0,phase:'idle'
+};
+let speed=700;
+let animQueue=[];
+let queueRunning=false;
+
+// ==================== UI HELPERS ====================
+const $=id=>document.getElementById(id);
+const cotC=$('cotContainer'),reactC=$('reactContainer');
+const treeCanvas=$('treeCanvas'),treeCtx=treeCanvas.getContext('2d');
+const pianoCanvas=$('pianoCanvas'),pianoCtx=pianoCanvas.getContext('2d');
+
+function setStatus(t){
+  $('statusText').textContent=t;
+  const ring=$('progressRing');
+  ring.classList.toggle('active',state.running&&state.phase!=='done');
+}
+function clearPanels(){
+  cotC.innerHTML='';reactC.innerHTML='';
+  state.cotSteps=[];state.reactEntries=[];state.chordProg=[];state.melody=[];state.currentBar=0;
+  state.treeData=null;
+  drawTree();drawPianoRoll();
+}
+
+// Queue system for sequential animations
+function enqueue(fn,delay){
+  animQueue.push({fn,delay:delay||speed});
+  if(!queueRunning)runQueue();
+}
+async function runQueue(){
+  queueRunning=true;
+  while(animQueue.length>0&&state.running){
+    const item=animQueue.shift();
+    await item.fn();
+    await wait(item.delay);
+  }
+  queueRunning=false;
+}
+function wait(ms){return new Promise(r=>setTimeout(r,ms))}
+function clearQueue(){animQueue=[];queueRunning=false}
+
+// ==================== CHAIN OF THOUGHT ====================
+function addCoTStep(num,thought,decision){
+  const div=document.createElement('div');
+  div.className='cot-step';
+  div.innerHTML=`<span class="step-num">${num}</span><strong style="font-size:.8rem">${thought.split(':')[0]||''}</strong>
+    <div class="thought">${typewriterText(thought)}</div>
+    <div class="decision">${decision}</div>`;
+  cotC.appendChild(div);
+  // remove active from previous
+  cotC.querySelectorAll('.cot-step.active').forEach(e=>e.classList.remove('active'));
+  requestAnimationFrame(()=>{div.classList.add('visible','active');cotC.scrollTop=cotC.scrollHeight});
+  state.cotSteps.push({num,thought,decision});
+}
+function typewriterText(t){return t}
+
+// ==================== TREE OF THOUGHT ====================
+// Tree structure: {name, score, children:[], explored:false, chosen:false, x, y, midi, quality}
+function buildTree(keyObj,numBars){
+  const root={name:chordForDegree(keyObj,0).name,score:1,children:[],explored:false,chosen:false,
+    midi:keyObj.rootMidi,quality:'min',numeral:'i',depth:0};
+  state.treeData=root;
+  // For each bar, build a level
+  let currentLevel=[root];
+  for(let bar=0;bar<numBars;bar++){
+    let nextLevel=[];
+    currentLevel.forEach(parent=>{
+      // generate 2-3 chord options
+      const options=generateChordOptions(keyObj,parent,bar);
+      options.forEach(opt=>{
+        const child={name:opt.name,score:0,children:[],explored:false,chosen:false,
+          midi:opt.root,quality:opt.quality,numeral:opt.numeral,depth:bar+1,parent};
+        parent.children.push(child);
+        nextLevel.push(child);
+      });
+    });
+    currentLevel=nextLevel;
+  }
+  layoutTree(root);
+}
+
+function generateChordOptions(keyObj,parent,bar){
+  // Use music theory for plausible progressions
+  const progMap={
+    0:[3,4,6],// i -> iv, v, VII
+    1:[4,0],// ii -> v, i
+    2:[3,5],// III -> iv, VI
+    3:[0,4,6],// iv -> i, v, VII
+    4:[0,5],// v -> i, VI
+    5:[3,4,2],// VI -> iv, v, III
+    6:[0,3]// VII -> i, iv
+  };
+  const parentDeg=SCALE_CHORDS.findIndex(s=>keyObj.rootMidi+s.deg===parent.midi%12+keyObj.rootMidi||
+    noteNameSimple(keyObj.rootMidi+s.deg)===noteNameSimple(parent.midi));
+  let targets=progMap[parentDeg>=0?parentDeg:0]||[0,3,4];
+  // shuffle and pick 2-3
+  targets=targets.sort(()=>Math.random()-.5).slice(0,2+Math.floor(Math.random()*2));
+  return targets.map(d=>{
+    const c=chordForDegree(keyObj,d);
+    return c;
+  });
+}
+
+function layoutTree(root){
+  if(!root)return;
+  const cW=treeCanvas.width,cH=treeCanvas.height;
+  const maxDepth=state.bars+1;
+  const levelHeight=cH/(maxDepth+1);
+  function layout(node,xMin,xMax,depth){
+    node.x=(xMin+xMax)/2;
+    node.y=30+depth*levelHeight;
+    node.radius=18;
+    const n=node.children.length;
+    if(n===0)return;
+    const segW=(xMax-xMin)/n;
+    node.children.forEach((ch,i)=>layout(ch,xMin+i*segW,xMin+(i+1)*segW,depth+1));
+  }
+  layout(root,40,cW-40,0);
+}
+
+function drawTree(){
+  const c=treeCanvas,ctx=treeCtx;
+  const container=$('treeContainer');
+  c.width=container.clientWidth;
+  c.height=Math.max(container.clientHeight-40,300);
+  ctx.clearRect(0,0,c.width,c.height);
+  if(!state.treeData){
+    ctx.fillStyle='#333';ctx.font='14px sans-serif';ctx.textAlign='center';
+    ctx.fillText('Tree will appear here during reasoning',c.width/2,c.height/2);
+    return;
+  }
+  layoutTree(state.treeData);
+  drawNode(ctx,state.treeData);
+}
+
+function drawNode(ctx,node){
+  if(!node)return;
+  // draw lines to children
+  node.children.forEach(ch=>{
+    ctx.beginPath();ctx.moveTo(node.x,node.y+node.radius);ctx.lineTo(ch.x,ch.y-ch.radius);
+    if(ch.chosen){ctx.strokeStyle='rgba(255,215,0,0.8)';ctx.lineWidth=3}
+    else if(ch.explored){ctx.strokeStyle='rgba(0,188,212,0.5)';ctx.lineWidth=2}
+    else{ctx.strokeStyle='rgba(80,80,100,0.3)';ctx.lineWidth=1}
+    ctx.stroke();
+    drawNode(ctx,ch);
+  });
+  // draw node circle
+  ctx.beginPath();ctx.arc(node.x,node.y,node.radius,0,Math.PI*2);
+  if(node.chosen){
+    ctx.fillStyle='#2a2a00';ctx.fill();
+    ctx.strokeStyle='#ffd700';ctx.lineWidth=2;ctx.stroke();
+    ctx.shadowColor='#ffd700';ctx.shadowBlur=12;ctx.stroke();ctx.shadowBlur=0;
+  }else if(node.explored){
+    ctx.fillStyle='#0a2a2a';ctx.fill();
+    ctx.strokeStyle='#00bcd4';ctx.lineWidth=1.5;ctx.stroke();
+  }else{
+    ctx.fillStyle='#1a1a2e';ctx.fill();
+    ctx.strokeStyle='#333';ctx.lineWidth=1;ctx.stroke();
+  }
+  // label
+  ctx.fillStyle=node.chosen?'#ffd700':node.explored?'#00bcd4':'#666';
+  ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(node.name,node.x,node.y);
+  // score
+  if(node.score>0&&node.depth>0){
+    ctx.font='9px sans-serif';ctx.fillStyle=node.chosen?'#ffd700':'#888';
+    ctx.fillText(node.score.toFixed(1),node.x,node.y+node.radius+10);
+  }
+}
+
+// Click handler for tree
+treeCanvas.addEventListener('click',e=>{
+  if(!state.treeData)return;
+  const rect=treeCanvas.getBoundingClientRect();
+  const mx=e.clientX-rect.left,my=e.clientY-rect.top;
+  const hit=findNode(state.treeData,mx,my);
+  if(hit){
+    ensureAudio();
+    playChordByName(hit.midi,hit.quality);
+    setStatus(`Auditioning chord: ${hit.name} (${hit.numeral||''})`);
+  }
+});
+function findNode(node,mx,my){
+  if(!node)return null;
+  const dx=mx-node.x,dy=my-node.y;
+  if(dx*dx+dy*dy<(node.radius+4)*(node.radius+4))return node;
+  for(const ch of node.children){
+    const r=findNode(ch,mx,my);
+    if(r)return r;
+  }
+  return null;
+}
+
+// ==================== REACT LOG ====================
+function addReactEntry(type,text){
+  const div=document.createElement('div');
+  div.className='react-entry';
+  const icons={observe:'\uD83D\uDD0D',think:'\uD83E\uDDE0',act:'\uD83C\uDFB5',correct:'\uD83D\uDD04'};
+  const labels={observe:'OBSERVE',think:'THINK',act:'ACT',correct:'CORRECT'};
+  div.innerHTML=`<span class="tag ${type}">${icons[type]||''} ${labels[type]||type.toUpperCase()}:</span> ${text}`;
+  reactC.appendChild(div);
+  requestAnimationFrame(()=>{div.classList.add('visible');reactC.scrollTop=reactC.scrollHeight});
+  state.reactEntries.push({type,text});
+}
+
+// ==================== PIANO ROLL ====================
+function drawPianoRoll(){
+  const container=$('pianoRoll');
+  const c=pianoCanvas;
+  c.width=Math.max(container.clientWidth, state.bars*200+100);
+  c.height=container.clientHeight||120;
+  const ctx=pianoCtx;
+  ctx.clearRect(0,0,c.width,c.height);
+  const keyObj=state.key||KEYS.D;
+  const barW=180,noteH=4,startX=60;
+  const loMidi=keyObj.rootMidi-5,hiMidi=keyObj.rootMidi+20;
+  const range=hiMidi-loMidi;
+  // grid
+  ctx.fillStyle='#0d0d1a';ctx.fillRect(0,0,c.width,c.height);
+  for(let b=0;b<=state.bars;b++){
+    const x=startX+b*barW;
+    ctx.strokeStyle=b===0?'#444':'#1a1a2e';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,c.height);ctx.stroke();
+    if(b<state.bars){
+      ctx.fillStyle='#555';ctx.font='10px sans-serif';ctx.textAlign='center';
+      ctx.fillText(`Bar ${b+1}`,x+barW/2,12);
+      // chord label
+      if(state.chordProg[b]){
+        ctx.fillStyle='#ffd700';ctx.font='bold 11px sans-serif';
+        ctx.fillText(state.chordProg[b].name,x+barW/2,26);
+      }
+    }
+  }
+  // horizontal note lines
+  for(let m=loMidi;m<=hiMidi;m++){
+    const y=c.height-(m-loMidi)/(range)*c.height*0.8-c.height*0.1;
+    if(NOTE_NAMES[m%12].includes('#'))continue;
+    ctx.strokeStyle='#161628';ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(c.width,y);ctx.stroke();
+    ctx.fillStyle='#333';ctx.font='8px sans-serif';ctx.textAlign='right';
+    ctx.fillText(noteName(m),startX-4,y+3);
+  }
+  // draw chord blocks
+  state.chordProg.forEach((ch,b)=>{
+    const notes=getChordNotes(ch.midi,ch.quality);
+    notes.forEach(m=>{
+      if(m<loMidi||m>hiMidi)return;
+      const y=c.height-(m-loMidi)/(range)*c.height*0.8-c.height*0.1;
+      const x=startX+b*barW+4;
+      ctx.fillStyle='rgba(108,99,255,0.3)';
+      ctx.fillRect(x,y-6,barW-8,12);
+      ctx.strokeStyle='rgba(108,99,255,0.6)';ctx.strokeRect(x,y-6,barW-8,12);
+    });
+  });
+  // draw melody notes
+  state.melody.forEach(n=>{
+    if(n.midi<loMidi||n.midi>hiMidi)return;
+    const y=c.height-(n.midi-loMidi)/(range)*c.height*0.8-c.height*0.1;
+    const x=startX+n.bar*barW+n.beat*(barW/4)+4;
+    const w=barW/4-4;
+    ctx.fillStyle=n.playing?'#00e676':'rgba(0,230,118,0.6)';
+    ctx.beginPath();ctx.roundRect(x,y-4,w,8,3);ctx.fill();
+    ctx.fillStyle='#fff';ctx.font='7px sans-serif';ctx.textAlign='center';
+    ctx.fillText(noteNameSimple(n.midi),x+w/2,y+3);
+  });
+  $('playbackPos').textContent=`Bar ${state.currentBar} / ${state.bars}`;
+}
+
+// ==================== COMPOSITION REASONING ENGINE ====================
+async function startReasoning(){
+  const keyId=$('keySelect').value;
+  speed=parseInt($('speedSelect').value);
+  const mode=$('modeSelect').value;
+  state.key=KEYS[keyId];
+  state.bars=4;
+  state.running=true;
+  state.phase='reasoning';
+  $('btnStart').disabled=true;$('btnReset').disabled=false;
+  $('btnPlay').disabled=true;$('btnExport').disabled=true;
+  clearPanels();clearQueue();
+  ensureAudio();
+  startDrone(state.key);
+  setStatus('Reasoning process initiated...');
+
+  // Phase 1: Chain of Thought — planning
+  if(mode==='full'||mode==='cot'){
+    await runCoT(state.key);
+  }
+  if(!state.running)return;
+
+  // Phase 2: Tree of Thought — chord exploration
+  if(mode==='full'||mode==='tot'){
+    await runToT(state.key);
+  }else{
+    // default chord progression
+    state.chordProg=[
+      chordForDegree(state.key,0),chordForDegree(state.key,3),
+      chordForDegree(state.key,5),chordForDegree(state.key,4)
+    ];
+  }
+  if(!state.running)return;
+
+  // Phase 3: ReAct — melody generation
+  if(mode==='full'||mode==='react'){
+    await runReAct(state.key);
+  }
+  if(!state.running)return;
+
+  // Done
+  state.phase='done';
+  stopDrone();
+  setStatus('Composition complete! Click "Play Composition" to hear the result.');
+  $('btnPlay').disabled=false;$('btnExport').disabled=false;
+  drawPianoRoll();
+}
+
+// ---------- Chain of Thought ----------
+async function runCoT(keyObj){
+  setStatus('Phase 1: Chain-of-Thought planning...');
+  const moods={C:'melancholic',D:'sorrowful',E:'brooding',G:'dark and mysterious',A:'wistful'};
+  const mood=moods[keyObj.root]||'contemplative';
+  const steps=[
+    {t:`Analyzing key signature: ${keyObj.name}`,d:`Key is ${keyObj.name} — ${mood} mood established`},
+    {t:`Determining scale degrees available: 1-2-b3-4-5-b6-b7`,d:`Natural minor scale with 7 tones to work with`},
+    {t:`Planning harmonic rhythm: one chord per bar, ${state.bars} bars total`,d:`${state.bars}-bar phrase structure chosen`},
+    {t:`Root note ${keyObj.root} is the tonal center and starting point`,d:`Begin and end on ${keyObj.root} for resolution`},
+    {t:`Considering voice leading: prefer stepwise motion and small intervals`,d:`Melody will use mostly 2nds and 3rds for smooth movement`},
+    {t:`Emotional arc: tension should build in bars 2-3 and resolve in bar 4`,d:`Create arc: stable -> tense -> climax -> resolve`},
+    {t:`Tempo set to ${$('tempoSlider').value} BPM — ${parseInt($('tempoSlider').value)<100?'slow and expressive':'moderate pace'}`,d:`Rhythm will use quarter and eighth note patterns`},
+    {t:`Self-check: ${keyObj.name} chord palette includes i, ii-dim, III, iv, v, VI, VII`,d:`Rich harmonic palette available for progression`}
+  ];
+  for(let i=0;i<steps.length;i++){
+    if(!state.running)return;
+    await new Promise(r=>{
+      enqueue(async()=>{
+        addCoTStep(i+1,steps[i].t,steps[i].d);
+        if(i===0)playNote(keyObj.rootMidi,0.5,'sine',0.1);
+        r();
+      },speed);
+    });
+    await wait(speed);
+  }
+}
+
+// ---------- Tree of Thought ----------
+async function runToT(keyObj){
+  setStatus('Phase 2: Tree-of-Thought chord exploration...');
+  buildTree(keyObj,state.bars);
+  drawTree();
+  await wait(speed);
+
+  // Explore tree level by level
+  const root=state.treeData;
+  root.explored=true;root.chosen=true;
+  drawTree();
+  await wait(speed/2);
+
+  let current=root;
+  state.chordProg=[];
+  for(let bar=0;bar<state.bars;bar++){
+    if(!state.running)return;
+    setStatus(`Phase 2: Evaluating chord options for bar ${bar+1}...`);
+    // Score children
+    for(const child of current.children){
+      if(!state.running)return;
+      child.explored=true;
+      child.score=scoreChordTransition(current,child,bar,state.bars);
+      drawTree();
+      playChord(child.midi,child.quality,0.4,0.08);
+      addReactEntry('observe',`Evaluating ${child.name} after ${current.name} — score: ${child.score.toFixed(1)}`);
+      await wait(speed*0.7);
+    }
+    // Pick best
+    const best=current.children.reduce((a,b)=>a.score>b.score?a:b);
+    best.chosen=true;
+    state.chordProg.push({name:best.name,midi:best.midi,quality:best.quality,numeral:best.numeral});
+    addCoTStep(state.cotSteps.length+1,
+      `Bar ${bar+1}: Selected ${best.name} (${best.numeral}) — score ${best.score.toFixed(1)}`,
+      `${current.name} -> ${best.name}`);
+    playChord(best.midi,best.quality,0.6,0.12);
+    drawTree();drawPianoRoll();
+    current=best;
+    await wait(speed);
+  }
+}
+
+function scoreChordTransition(from,to,bar,totalBars){
+  let score=5;
+  // Common tones bonus
+  const fromNotes=getChordNotes(from.midi,from.quality);
+  const toNotes=getChordNotes(to.midi,to.quality);
+  const common=fromNotes.filter(n=>toNotes.some(t=>t%12===n%12)).length;
+  score+=common*1.2;
+  // Movement: prefer 4ths/5ths
+  const interval=Math.abs(to.midi-from.midi)%12;
+  if(interval===5||interval===7)score+=2;
+  if(interval===3||interval===4)score+=1;
+  // Resolve to tonic at end
+  if(bar===totalBars-1&&to.numeral==='i')score+=3;
+  // Tension in middle
+  if((bar===1||bar===2)&&(to.numeral==='iv'||to.numeral==='v'||to.numeral==='VII'))score+=1.5;
+  // Avoid same chord
+  if(from.midi%12===to.midi%12)score-=3;
+  // Randomness
+  score+=Math.random()*2;
+  return Math.max(0,score);
+}
+
+// ---------- ReAct Loop ----------
+async function runReAct(keyObj){
+  setStatus('Phase 3: ReAct melody generation...');
+  state.melody=[];
+  for(let bar=0;bar<state.bars;bar++){
+    if(!state.running)return;
+    const chord=state.chordProg[bar]||chordForDegree(keyObj,0);
+    const chordTones=getChordNotes(chord.midi,chord.quality).map(n=>n%12);
+    state.currentBar=bar;
+    setStatus(`Phase 3: Generating melody for bar ${bar+1} over ${chord.name}...`);
+
+    // Generate 4 beats per bar
+    let prevMidi=bar===0?keyObj.rootMidi+12:state.melody[state.melody.length-1].midi;
+    for(let beat=0;beat<4;beat++){
+      if(!state.running)return;
+      // OBSERVE
+      addReactEntry('observe',
+        `Bar ${bar+1}, beat ${beat+1}: Chord is ${chord.name}. Previous note: ${noteName(prevMidi)}`);
+      await wait(speed*0.4);
+
+      // THINK
+      const candidates=generateMelodyCandidates(keyObj,prevMidi,chordTones,beat,bar);
+      const chosen=candidates[0];
+      const reasoning=melodicReasoning(prevMidi,chosen.midi,chord,beat);
+      addReactEntry('think',reasoning);
+      await wait(speed*0.4);
+
+      // ACT
+      addReactEntry('act',`Play ${noteName(chosen.midi)} (${chosen.reason})`);
+      playNote(chosen.midi,0.35,'triangle',0.15);
+      state.melody.push({midi:chosen.midi,bar,beat,duration:1});
+      prevMidi=chosen.midi;
+      drawPianoRoll();
+      await wait(speed*0.4);
+
+      // SELF-CORRECTION (occasionally)
+      if(Math.random()<0.25&&beat<3){
+        const interval=Math.abs(chosen.midi-prevMidi);
+        if(interval>5){
+          addReactEntry('correct',
+            `Large leap of ${interval} semitones detected. Next note should move stepwise to compensate.`);
+          await wait(speed*0.3);
+        }
+      }
+    }
+    // Play the bar's chord underneath
+    playChord(chord.midi,chord.quality,1.0,0.08);
+    await wait(speed*0.5);
+  }
+}
+
+function generateMelodyCandidates(keyObj,prevMidi,chordTones,beat,bar){
+  const candidates=[];
+  // Scale tones near previous note
+  for(let d=-4;d<=4;d++){
+    const scaleDeg=Math.round((prevMidi-keyObj.rootMidi)/12*7)+d;
+    const midi=scaleNote(keyObj,scaleDeg);
+    let score=10;
+    // Prefer small intervals
+    const interval=Math.abs(midi-prevMidi);
+    score-=interval*0.8;
+    // Prefer chord tones on strong beats
+    if(chordTones.includes(midi%12)){
+      score+=(beat===0||beat===2)?4:2;
+    }
+    // Prefer root on beat 1 of first bar
+    if(beat===0&&bar===0&&midi%12===keyObj.rootMidi%12)score+=3;
+    // Resolve to root at end
+    if(bar===3&&beat===3&&midi%12===keyObj.rootMidi%12)score+=5;
+    // Keep in singable range
+    if(midi<keyObj.rootMidi+5||midi>keyObj.rootMidi+19)score-=4;
+    score+=Math.random()*1.5;
+    const isChordTone=chordTones.includes(midi%12);
+    candidates.push({midi,score,reason:isChordTone?'chord tone':'passing tone'});
+  }
+  candidates.sort((a,b)=>b.score-a.score);
+  return candidates;
+}
+
+function melodicReasoning(prevMidi,nextMidi,chord,beat){
+  const interval=nextMidi-prevMidi;
+  const intervalName=Math.abs(interval)<=2?'stepwise motion':Math.abs(interval)<=4?'small leap':'larger leap';
+  const direction=interval>0?'ascending':interval<0?'descending':'repeated';
+  const chordTones=getChordNotes(chord.midi,chord.quality).map(n=>n%12);
+  const isChordTone=chordTones.includes(nextMidi%12);
+  const stability=isChordTone?'stable chord tone':'creates tension as passing tone';
+  const beatStr=beat===0?'downbeat (strong)':beat===2?'beat 3 (moderate)':'weak beat';
+  return `${direction} ${intervalName} to ${noteName(nextMidi)} on ${beatStr} — ${stability} over ${chord.name}`;
+}
+
+// ==================== PLAYBACK ====================
+async function playComposition(){
+  if(state.chordProg.length===0)return;
+  const ctx=ensureAudio();
+  const tempo=parseInt($('tempoSlider').value);
+  const beatDur=60/tempo;
+  const barDur=beatDur*4;
+  $('btnPlay').disabled=true;
+  setStatus('Playing composition...');
+
+  const startTime=ctx.currentTime+0.1;
+  // Schedule chords
+  state.chordProg.forEach((ch,bar)=>{
+    playChord(ch.midi,ch.quality,barDur*0.9,0.1,startTime+bar*barDur);
+    // bass note
+    playNote(ch.midi-12,barDur*0.9,'sine',0.1,startTime+bar*barDur);
+  });
+  // Schedule melody
+  state.melody.forEach(n=>{
+    const t=startTime+n.bar*barDur+n.beat*beatDur;
+    playNote(n.midi,beatDur*0.85,'triangle',0.15,t);
+  });
+  // Animate playback
+  const totalDur=state.bars*barDur*1000;
+  const start=performance.now();
+  function animate(){
+    const elapsed=performance.now()-start;
+    const progress=elapsed/totalDur;
+    if(progress>=1){
+      $('btnPlay').disabled=false;
+      setStatus('Playback complete.');
+      drawPianoRoll();
+      return;
+    }
+    state.currentBar=Math.floor(progress*state.bars);
+    drawPianoRoll();
+    // highlight currently playing notes
+    const currentTime=progress*state.bars;
+    state.melody.forEach(n=>{
+      n.playing=(n.bar+n.beat/4)<=currentTime&&(n.bar+n.beat/4+0.25)>currentTime;
+    });
+    requestAnimationFrame(animate);
+  }
+  requestAnimationFrame(animate);
+}
+
+// ==================== EXPORT ====================
+function showExport(){
+  if(state.chordProg.length===0)return;
+  const keyObj=state.key;
+  let text=`=== Composition Reasoner Export ===\n`;
+  text+=`Key: ${keyObj.name}\n`;
+  text+=`Tempo: ${$('tempoSlider').value} BPM\n`;
+  text+=`Bars: ${state.bars}\n\n`;
+  text+=`--- Chord Progression ---\n`;
+  state.chordProg.forEach((ch,i)=>text+=`  Bar ${i+1}: ${ch.name} (${ch.numeral||''})\n`);
+  text+=`\n--- Melody ---\n`;
+  state.melody.forEach(n=>text+=`  Bar ${n.bar+1}, Beat ${n.beat+1}: ${noteName(n.midi)}\n`);
+  text+=`\n--- Reasoning Chain (${state.cotSteps.length} steps) ---\n`;
+  state.cotSteps.forEach(s=>text+=`  Step ${s.num}: ${s.decision}\n`);
+  text+=`\n--- ReAct Log (${state.reactEntries.length} entries) ---\n`;
+  state.reactEntries.slice(0,20).forEach(e=>text+=`  [${e.type.toUpperCase()}] ${e.text}\n`);
+  if(state.reactEntries.length>20)text+=`  ... and ${state.reactEntries.length-20} more entries\n`;
+  $('exportText').textContent=text;
+  $('exportArea').style.display='block';
+  $('overlay').style.display='block';
+}
+function closeExport(){
+  $('exportArea').style.display='none';
+  $('overlay').style.display='none';
+}
+
+// ==================== RESET ====================
+function resetAll(){
+  state.running=false;
+  clearQueue();
+  stopDrone();
+  clearPanels();
+  state.phase='idle';
+  $('btnStart').disabled=false;$('btnReset').disabled=true;
+  $('btnPlay').disabled=true;$('btnExport').disabled=true;
+  setStatus('Reset. Ready to start a new reasoning session.');
+  drawTree();drawPianoRoll();
+}
+
+// ==================== EVENT LISTENERS ====================
+$('btnStart').addEventListener('click',()=>startReasoning());
+$('btnReset').addEventListener('click',()=>resetAll());
+$('btnPlay').addEventListener('click',()=>playComposition());
+$('btnExport').addEventListener('click',()=>showExport());
+$('tempoSlider').addEventListener('input',e=>$('tempoVal').textContent=e.target.value);
+
+// Resize handling
+function onResize(){
+  drawTree();drawPianoRoll();
+}
+window.addEventListener('resize',onResize);
+// Initial draw
+requestAnimationFrame(()=>{onResize()});
+
+// Canvas roundRect polyfill
+if(!CanvasRenderingContext2D.prototype.roundRect){
+  CanvasRenderingContext2D.prototype.roundRect=function(x,y,w,h,r){
+    this.beginPath();this.moveTo(x+r,y);this.lineTo(x+w-r,y);this.quadraticCurveTo(x+w,y,x+w,y+r);
+    this.lineTo(x+w,y+h-r);this.quadraticCurveTo(x+w,y+h,x+w-r,y+h);this.lineTo(x+r,y+h);
+    this.quadraticCurveTo(x,y+h,x,y+h-r);this.lineTo(x,y+r);this.quadraticCurveTo(x,y,x+r,y);this.closePath();
+  };
+}
+
+// ==================== KEYBOARD VISUALIZER ====================
+function buildKeyboard(){
+  const kb=$('keyboard');
+  kb.innerHTML='';
+  const keyObj=state.key||KEYS.D;
+  const startMidi=keyObj.rootMidi-2;
+  const endMidi=keyObj.rootMidi+24;
+  for(let m=startMidi;m<=endMidi;m++){
+    const name=NOTE_NAMES[m%12];
+    const isBlack=name.includes('#');
+    const el=document.createElement('div');
+    el.className=isBlack?'key-black':'key-white';
+    el.dataset.midi=m;
+    el.title=noteName(m);
+    el.addEventListener('mousedown',()=>{
+      ensureAudio();
+      playNote(m,0.5,'triangle',0.15);
+      el.classList.add('active');
+      spawnParticles(el.getBoundingClientRect());
+      setTimeout(()=>el.classList.remove('active'),400);
+    });
+    kb.appendChild(el);
+  }
+}
+buildKeyboard();
+
+function highlightKey(midi){
+  const kb=$('keyboard');
+  const el=kb.querySelector(`[data-midi="${midi}"]`);
+  if(el){
+    el.classList.add('active');
+    setTimeout(()=>el.classList.remove('active'),350);
+  }
+}
+
+// Override playNote to also highlight keyboard
+const _origPlayNote=playNote;
+// We patch at the call sites instead to avoid recursion issues
+
+// ==================== PARTICLE SYSTEM ====================
+const particleCanvas=$('particleCanvas');
+const partCtx=particleCanvas.getContext('2d');
+let particles=[];
+
+function resizeParticleCanvas(){
+  particleCanvas.width=window.innerWidth;
+  particleCanvas.height=window.innerHeight;
+}
+resizeParticleCanvas();
+window.addEventListener('resize',resizeParticleCanvas);
+
+function spawnParticles(rect,count=8){
+  const cx=rect.left+rect.width/2;
+  const cy=rect.top+rect.height/2;
+  const colors=['#6c63ff','#ffd700','#00e676','#00bcd4','#ff9800','#e040fb'];
+  for(let i=0;i<count;i++){
+    const angle=Math.random()*Math.PI*2;
+    const speed=1+Math.random()*3;
+    particles.push({
+      x:cx,y:cy,
+      vx:Math.cos(angle)*speed,
+      vy:Math.sin(angle)*speed-1,
+      life:1,decay:0.015+Math.random()*0.02,
+      size:2+Math.random()*4,
+      color:colors[Math.floor(Math.random()*colors.length)]
+    });
+  }
+}
+
+function spawnParticlesAt(x,y,count=6){
+  spawnParticles({left:x-2,top:y-2,width:4,height:4},count);
+}
+
+function updateParticles(){
+  partCtx.clearRect(0,0,particleCanvas.width,particleCanvas.height);
+  particles=particles.filter(p=>p.life>0);
+  particles.forEach(p=>{
+    p.x+=p.vx;
+    p.y+=p.vy;
+    p.vy+=0.05;// gravity
+    p.life-=p.decay;
+    partCtx.globalAlpha=p.life;
+    partCtx.fillStyle=p.color;
+    partCtx.beginPath();
+    partCtx.arc(p.x,p.y,p.size*p.life,0,Math.PI*2);
+    partCtx.fill();
+  });
+  partCtx.globalAlpha=1;
+  requestAnimationFrame(updateParticles);
+}
+updateParticles();
+
+// ==================== ENHANCED COT WITH CONFIDENCE ====================
+function addCoTStepEnhanced(num,thought,decision,confidence){
+  const div=document.createElement('div');
+  div.className='cot-step';
+  const confPct=Math.round((confidence||0.7)*100);
+  div.innerHTML=`<span class="step-num">${num}</span><strong style="font-size:.8rem">${thought.split(':')[0]||''}</strong>
+    <div class="thought">${thought}</div>
+    <div class="decision">${decision}</div>
+    <div class="confidence-bar"><div class="confidence-fill" style="width:${confPct}%"></div></div>
+    <div style="font-size:.6rem;color:#555;margin-top:2px">Confidence: ${confPct}%</div>`;
+  cotC.appendChild(div);
+  cotC.querySelectorAll('.cot-step.active').forEach(e=>e.classList.remove('active'));
+  requestAnimationFrame(()=>{div.classList.add('visible','active');cotC.scrollTop=cotC.scrollHeight});
+  state.cotSteps.push({num,thought,decision,confidence});
+  // Spawn particles near the panel
+  const rect=div.getBoundingClientRect();
+  spawnParticlesAt(rect.left+rect.width/2,rect.top,4);
+}
+
+// ==================== ENHANCED REACT WITH SELF-CORRECTION ====================
+function addReactEntryEnhanced(type,text,isCorrection){
+  const div=document.createElement('div');
+  div.className='react-entry'+(isCorrection?' correction':'');
+  const icons={observe:'\uD83D\uDD0D',think:'\uD83E\uDDE0',act:'\uD83C\uDFB5',correct:'\uD83D\uDD04'};
+  const labels={observe:'OBSERVE',think:'THINK',act:'ACT',correct:'SELF-CORRECT'};
+  div.innerHTML=`<span class="tag ${type}">${icons[type]||''} ${labels[type]||type.toUpperCase()}:</span> ${text}`;
+  reactC.appendChild(div);
+  requestAnimationFrame(()=>{div.classList.add('visible');reactC.scrollTop=reactC.scrollHeight});
+  state.reactEntries.push({type,text});
+  if(type==='act'){
+    const rect=div.getBoundingClientRect();
+    spawnParticlesAt(rect.left+20,rect.top+10,5);
+  }
+}
+
+// ==================== STATS TRACKING ====================
+let stats={totalNotes:0,chordTones:0,passingTones:0,corrections:0,branches:0};
+function resetStats(){stats={totalNotes:0,chordTones:0,passingTones:0,corrections:0,branches:0}}
+function updateStatsDisplay(){
+  let el=$('statsDisplay');
+  if(!el){
+    el=document.createElement('div');el.id='statsDisplay';el.className='stats-row';
+    $('cotContainer').parentElement.querySelector('.panel-header').appendChild(el);
+  }
+  el.innerHTML=`
+    <span class="stat">Notes: <span class="stat-val">${stats.totalNotes}</span></span>
+    <span class="stat">Chord: <span class="stat-val">${stats.chordTones}</span></span>
+    <span class="stat">Pass: <span class="stat-val">${stats.passingTones}</span></span>
+    <span class="stat">Fixes: <span class="stat-val" style="color:var(--pink)">${stats.corrections}</span></span>
+    <span class="stat">Branches: <span class="stat-val" style="color:var(--cyan)">${stats.branches}</span></span>`;
+}
+
+// ==================== ENHANCED TREE DRAWING WITH GLOW ====================
+function drawTreeEnhanced(){
+  const c=treeCanvas,ctx=treeCtx;
+  const container=$('treeContainer');
+  c.width=container.clientWidth;
+  c.height=Math.max(container.clientHeight-40,300);
+  ctx.clearRect(0,0,c.width,c.height);
+  if(!state.treeData){
+    ctx.fillStyle='#333';ctx.font='14px sans-serif';ctx.textAlign='center';
+    ctx.fillText('Tree will appear here during reasoning',c.width/2,c.height/2);
+    return;
+  }
+  layoutTree(state.treeData);
+  // Draw background glow for chosen path
+  drawChosenPathGlow(ctx,state.treeData);
+  drawNodeEnhanced(ctx,state.treeData);
+}
+
+function drawChosenPathGlow(ctx,node){
+  if(!node||!node.chosen)return;
+  node.children.forEach(ch=>{
+    if(ch.chosen){
+      ctx.save();
+      ctx.shadowColor='rgba(255,215,0,0.3)';ctx.shadowBlur=20;
+      ctx.beginPath();ctx.moveTo(node.x,node.y);ctx.lineTo(ch.x,ch.y);
+      ctx.strokeStyle='rgba(255,215,0,0.15)';ctx.lineWidth=12;ctx.stroke();
+      ctx.restore();
+      drawChosenPathGlow(ctx,ch);
+    }
+  });
+}
+
+function drawNodeEnhanced(ctx,node){
+  if(!node)return;
+  node.children.forEach(ch=>{
+    ctx.beginPath();
+    // Curved lines instead of straight
+    const midY=(node.y+ch.y)/2;
+    ctx.moveTo(node.x,node.y+node.radius);
+    ctx.bezierCurveTo(node.x,midY,ch.x,midY,ch.x,ch.y-ch.radius);
+    if(ch.chosen){ctx.strokeStyle='rgba(255,215,0,0.8)';ctx.lineWidth=3}
+    else if(ch.explored){ctx.strokeStyle='rgba(0,188,212,0.5)';ctx.lineWidth=2}
+    else{ctx.strokeStyle='rgba(80,80,100,0.3)';ctx.lineWidth=1}
+    ctx.stroke();
+    drawNodeEnhanced(ctx,ch);
+  });
+  // Node shadow
+  if(node.chosen){
+    ctx.save();ctx.shadowColor='#ffd700';ctx.shadowBlur=15;
+    ctx.beginPath();ctx.arc(node.x,node.y,node.radius,0,Math.PI*2);
+    ctx.fillStyle='rgba(255,215,0,0.1)';ctx.fill();
+    ctx.restore();
+  }
+  // Node circle
+  ctx.beginPath();ctx.arc(node.x,node.y,node.radius,0,Math.PI*2);
+  if(node.chosen){
+    const grad=ctx.createRadialGradient(node.x,node.y,0,node.x,node.y,node.radius);
+    grad.addColorStop(0,'#3a3a10');grad.addColorStop(1,'#2a2a00');
+    ctx.fillStyle=grad;ctx.fill();
+    ctx.strokeStyle='#ffd700';ctx.lineWidth=2;ctx.stroke();
+  }else if(node.explored){
+    ctx.fillStyle='#0a2a2a';ctx.fill();
+    ctx.strokeStyle='#00bcd4';ctx.lineWidth=1.5;ctx.stroke();
+  }else{
+    ctx.fillStyle='#1a1a2e';ctx.fill();
+    ctx.strokeStyle='#333';ctx.lineWidth=1;ctx.stroke();
+  }
+  // Label
+  ctx.fillStyle=node.chosen?'#ffd700':node.explored?'#00bcd4':'#666';
+  ctx.font='bold 10px sans-serif';ctx.textAlign='center';ctx.textBaseline='middle';
+  ctx.fillText(node.name,node.x,node.y-2);
+  // Numeral
+  if(node.numeral&&node.depth>0){
+    ctx.font='8px sans-serif';ctx.fillStyle=node.chosen?'#aa9500':'#555';
+    ctx.fillText(node.numeral,node.x,node.y+8);
+  }
+  // Score badge
+  if(node.score>0&&node.depth>0){
+    const badgeX=node.x+node.radius+2,badgeY=node.y-node.radius+2;
+    ctx.fillStyle=node.chosen?'rgba(255,215,0,0.2)':'rgba(0,188,212,0.15)';
+    ctx.beginPath();ctx.arc(badgeX,badgeY,9,0,Math.PI*2);ctx.fill();
+    ctx.font='bold 8px sans-serif';ctx.fillStyle=node.chosen?'#ffd700':'#00bcd4';
+    ctx.fillText(node.score.toFixed(0),badgeX,badgeY+1);
+  }
+}
+
+// Replace default drawTree
+drawTree=drawTreeEnhanced;
+
+// ==================== ENHANCED PIANO ROLL ====================
+function drawPianoRollEnhanced(){
+  const container=$('pianoRoll');
+  const c=pianoCanvas;
+  c.width=Math.max(container.clientWidth, state.bars*200+100);
+  c.height=container.clientHeight||120;
+  const ctx=pianoCtx;
+  ctx.clearRect(0,0,c.width,c.height);
+  const keyObj=state.key||KEYS.D;
+  const barW=180,startX=60;
+  const loMidi=keyObj.rootMidi-5,hiMidi=keyObj.rootMidi+20;
+  const range=hiMidi-loMidi;
+  // Background
+  ctx.fillStyle='#0d0d1a';ctx.fillRect(0,0,c.width,c.height);
+  // Alternating bar shading
+  for(let b=0;b<state.bars;b++){
+    if(b%2===1){
+      ctx.fillStyle='rgba(255,255,255,0.015)';
+      ctx.fillRect(startX+b*barW,0,barW,c.height);
+    }
+  }
+  // Grid lines
+  for(let b=0;b<=state.bars;b++){
+    const x=startX+b*barW;
+    ctx.strokeStyle='#1a1a2e';ctx.lineWidth=1;
+    ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,c.height);ctx.stroke();
+    // Beat subdivisions
+    if(b<state.bars){
+      for(let beat=1;beat<4;beat++){
+        const bx=x+beat*(barW/4);
+        ctx.strokeStyle='#111';ctx.lineWidth=0.5;
+        ctx.beginPath();ctx.moveTo(bx,0);ctx.lineTo(bx,c.height);ctx.stroke();
+      }
+      ctx.fillStyle='#555';ctx.font='10px sans-serif';ctx.textAlign='center';
+      ctx.fillText(`Bar ${b+1}`,x+barW/2,12);
+      // Chord label with background
+      if(state.chordProg[b]){
+        const label=state.chordProg[b].name;
+        const tw=ctx.measureText(label).width;
+        ctx.fillStyle='rgba(255,215,0,0.1)';
+        ctx.fillRect(x+barW/2-tw/2-4,16,tw+8,14);
+        ctx.fillStyle='#ffd700';ctx.font='bold 11px sans-serif';
+        ctx.fillText(label,x+barW/2,26);
+      }
+    }
+  }
+  // Horizontal note guides — highlight scale tones
+  for(let m=loMidi;m<=hiMidi;m++){
+    const y=c.height-(m-loMidi)/(range)*c.height*0.8-c.height*0.1;
+    const isScaleTone=keyObj.scale.includes((m-keyObj.rootMidi+120)%12);
+    ctx.strokeStyle=isScaleTone?'#1a1a30':'#111';ctx.lineWidth=0.5;
+    ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(c.width,y);ctx.stroke();
+    if(!NOTE_NAMES[m%12].includes('#')){
+      ctx.fillStyle=isScaleTone?'#444':'#2a2a2a';ctx.font='8px sans-serif';ctx.textAlign='right';
+      ctx.fillText(noteName(m),startX-4,y+3);
+    }
+  }
+  // Chord blocks with gradient
+  state.chordProg.forEach((ch,b)=>{
+    const notes=getChordNotes(ch.midi,ch.quality);
+    notes.forEach(m=>{
+      if(m<loMidi||m>hiMidi)return;
+      const y=c.height-(m-loMidi)/(range)*c.height*0.8-c.height*0.1;
+      const x=startX+b*barW+2;
+      const grad=ctx.createLinearGradient(x,y-6,x+barW-4,y+6);
+      grad.addColorStop(0,'rgba(108,99,255,0.15)');grad.addColorStop(1,'rgba(108,99,255,0.3)');
+      ctx.fillStyle=grad;
+      ctx.fillRect(x,y-6,barW-4,12);
+      ctx.strokeStyle='rgba(108,99,255,0.4)';ctx.lineWidth=0.5;ctx.strokeRect(x,y-6,barW-4,12);
+    });
+  });
+  // Melody notes with rounded rects and connection lines
+  let prevX=null,prevY=null;
+  state.melody.forEach(n=>{
+    if(n.midi<loMidi||n.midi>hiMidi)return;
+    const y=c.height-(n.midi-loMidi)/(range)*c.height*0.8-c.height*0.1;
+    const x=startX+n.bar*barW+n.beat*(barW/4)+4;
+    const w=barW/4-4;
+    // Connection line
+    if(prevX!==null){
+      ctx.strokeStyle='rgba(0,230,118,0.2)';ctx.lineWidth=1;
+      ctx.beginPath();ctx.moveTo(prevX+w/2,prevY);ctx.lineTo(x+w/2,y);ctx.stroke();
+    }
+    // Note block
+    const isPlaying=n.playing;
+    if(isPlaying){
+      ctx.save();ctx.shadowColor='#00e676';ctx.shadowBlur=10;
+    }
+    ctx.fillStyle=isPlaying?'#00e676':'rgba(0,230,118,0.6)';
+    ctx.beginPath();ctx.roundRect(x,y-4,w,8,3);ctx.fill();
+    if(isPlaying)ctx.restore();
+    ctx.fillStyle='#fff';ctx.font='bold 7px sans-serif';ctx.textAlign='center';
+    ctx.fillText(noteNameSimple(n.midi),x+w/2,y+3);
+    prevX=x;prevY=y;
+  });
+  $('playbackPos').textContent=`Bar ${state.currentBar+1} / ${state.bars}`;
+}
+// Replace drawPianoRoll
+drawPianoRoll=drawPianoRollEnhanced;
+
+// ==================== ENHANCED REASONING ENGINE ====================
+// Override the original CoT to use enhanced version
+async function runCoTEnhanced(keyObj){
+  setStatus('Phase 1: Chain-of-Thought planning...');
+  const moods={C:'melancholic and introspective',D:'sorrowful yet dignified',E:'brooding and intense',G:'dark and mysterious',A:'wistful and longing'};
+  const mood=moods[keyObj.root]||'contemplative';
+  const tempoVal=parseInt($('tempoSlider').value);
+  const tempoDesc=tempoVal<90?'slow, breathing space':tempoVal<120?'moderate, walking pace':'brisk, energetic';
+  const steps=[
+    {t:`Analyzing key signature: ${keyObj.name}`,d:`Key is ${keyObj.name} — ${mood} mood established`,c:0.95},
+    {t:`Scale construction: ${keyObj.root} natural minor = 1-2-b3-4-5-b6-b7`,d:`7 scale degrees available; b3 and b6 provide the minor color`,c:0.92},
+    {t:`Harmonic analysis: diatonic triads are i, ii-dim, III, iv, v, VI, VII`,d:`Focus on i-iv-v-VII for strong minor progression`,c:0.88},
+    {t:`Phrase structure: ${state.bars} bars, one chord per bar, 4 beats each`,d:`Standard phrase length creates complete musical statement`,c:0.90},
+    {t:`Tonal center: ${keyObj.root} is home base — start and end here for resolution`,d:`Begin on tonic, create departure, return at cadence`,c:0.93},
+    {t:`Voice leading principle: prefer stepwise motion (2nds) with occasional 3rds`,d:`Smooth melody; leaps create interest but need resolution`,c:0.85},
+    {t:`Emotional arc planning: stable (bar 1) -> tension (bar 2) -> climax (bar 3) -> resolution (bar 4)`,d:`Classic tension-release narrative drives the composition`,c:0.91},
+    {t:`Tempo analysis: ${tempoVal} BPM — ${tempoDesc}`,d:`Quarter and eighth note rhythmic vocabulary appropriate`,c:0.87},
+    {t:`Timbre choice: triangle wave for melody clarity, sine for bass warmth`,d:`Clean tones let harmonic relationships be heard clearly`,c:0.82},
+    {t:`Self-check: all parameters consistent — ${keyObj.name}, ${tempoVal}BPM, ${state.bars} bars, minor palette`,d:`Reasoning chain complete. Proceeding to chord exploration.`,c:0.96}
+  ];
+  resetStats();
+  for(let i=0;i<steps.length;i++){
+    if(!state.running)return;
+    addCoTStepEnhanced(i+1,steps[i].t,steps[i].d,steps[i].c);
+    if(i===0){playNote(keyObj.rootMidi,0.5,'sine',0.1);highlightKey(keyObj.rootMidi)}
+    if(i===1){
+      // Play scale
+      for(let s=0;s<keyObj.scale.length;s++){
+        playNote(keyObj.rootMidi+keyObj.scale[s],0.2,'triangle',0.08,ensureAudio().currentTime+s*0.15);
+      }
+    }
+    updateStatsDisplay();
+    await wait(speed);
+  }
+}
+
+// Override ToT
+async function runToTEnhanced(keyObj){
+  setStatus('Phase 2: Tree-of-Thought chord exploration...');
+  buildTree(keyObj,state.bars);
+  drawTree();
+  await wait(speed);
+
+  const root=state.treeData;
+  root.explored=true;root.chosen=true;
+  drawTree();
+  await wait(speed/2);
+
+  let current=root;
+  state.chordProg=[];
+  for(let bar=0;bar<state.bars;bar++){
+    if(!state.running)return;
+    setStatus(`Phase 2: Evaluating chord options for bar ${bar+1}...`);
+    // Score children
+    let bestScore=-Infinity,bestChild=null;
+    for(const child of current.children){
+      if(!state.running)return;
+      child.explored=true;
+      child.score=scoreChordTransition(current,child,bar,state.bars);
+      stats.branches++;
+      drawTree();
+      playChord(child.midi,child.quality,0.4,0.08);
+      highlightKey(child.midi);
+      addReactEntryEnhanced('observe',
+        `Evaluating ${child.name} (${child.numeral}) after ${current.name} — voice leading distance: ${Math.abs(child.midi-current.midi)%12} semitones`,false);
+      await wait(speed*0.5);
+      addReactEntryEnhanced('think',
+        `Score: ${child.score.toFixed(1)} — ${child.score>8?'excellent fit':'acceptable'}, common tones: ${getChordNotes(current.midi,current.quality).filter(n=>getChordNotes(child.midi,child.quality).some(t=>t%12===n%12)).length}`,false);
+      await wait(speed*0.4);
+      if(child.score>bestScore){bestScore=child.score;bestChild=child}
+    }
+    // Pick best
+    bestChild.chosen=true;
+    state.chordProg.push({name:bestChild.name,midi:bestChild.midi,quality:bestChild.quality,numeral:bestChild.numeral});
+    addCoTStepEnhanced(state.cotSteps.length+1,
+      `Bar ${bar+1}: Selected ${bestChild.name} (${bestChild.numeral}) with score ${bestChild.score.toFixed(1)}`,
+      `${current.name} \u2192 ${bestChild.name}`,
+      Math.min(bestChild.score/12,0.99));
+    playChord(bestChild.midi,bestChild.quality,0.6,0.12);
+    highlightKey(bestChild.midi);
+    // Particles at tree node
+    const treeRect=treeCanvas.getBoundingClientRect();
+    spawnParticlesAt(treeRect.left+bestChild.x,treeRect.top+bestChild.y,10);
+    drawTree();drawPianoRoll();updateStatsDisplay();
+    current=bestChild;
+    await wait(speed);
+  }
+}
+
+// Override ReAct
+async function runReActEnhanced(keyObj){
+  setStatus('Phase 3: ReAct melody generation with self-correction...');
+  state.melody=[];
+  for(let bar=0;bar<state.bars;bar++){
+    if(!state.running)return;
+    const chord=state.chordProg[bar]||chordForDegree(keyObj,0);
+    const chordTones=getChordNotes(chord.midi,chord.quality).map(n=>n%12);
+    state.currentBar=bar;
+    setStatus(`Phase 3: Generating melody for bar ${bar+1} over ${chord.name}...`);
+
+    let prevMidi=bar===0?keyObj.rootMidi+12:state.melody[state.melody.length-1].midi;
+    for(let beat=0;beat<4;beat++){
+      if(!state.running)return;
+      // OBSERVE
+      const prevNoteName=noteName(prevMidi);
+      const intervalFromRoot=(prevMidi-keyObj.rootMidi+120)%12;
+      addReactEntryEnhanced('observe',
+        `Bar ${bar+1}, Beat ${beat+1}: Over ${chord.name}. Last note: ${prevNoteName} (interval from root: ${intervalFromRoot} semitones)`,false);
+      await wait(speed*0.35);
+
+      // THINK
+      const candidates=generateMelodyCandidates(keyObj,prevMidi,chordTones,beat,bar);
+      const chosen=candidates[0];
+      const reasoning=melodicReasoning(prevMidi,chosen.midi,chord,beat);
+      addReactEntryEnhanced('think',reasoning,false);
+      await wait(speed*0.35);
+
+      // SELF-CORRECTION CHECK
+      let finalNote=chosen;
+      if(state.melody.length>=2){
+        const last2=state.melody.slice(-2);
+        const intervals=[last2[1].midi-last2[0].midi, chosen.midi-last2[1].midi];
+        // Check for parallel motion or repeated large leaps
+        if(Math.abs(intervals[0])>4&&Math.abs(intervals[1])>4&&Math.sign(intervals[0])===Math.sign(intervals[1])){
+          stats.corrections++;
+          addReactEntryEnhanced('correct',
+            `Two consecutive large leaps in same direction (${intervals[0]>0?'up':'down'} ${Math.abs(intervals[0])} then ${Math.abs(intervals[1])}). Correcting: choosing stepwise contrary motion instead.`,true);
+          // Find a better candidate moving in opposite direction
+          const corrected=candidates.find(c=>{
+            const newInterval=c.midi-prevMidi;
+            return Math.abs(newInterval)<=2&&Math.sign(newInterval)!==Math.sign(intervals[0]);
+          });
+          if(corrected)finalNote=corrected;
+          await wait(speed*0.3);
+        }
+        // Check for too many repeated notes
+        if(state.melody.length>=3){
+          const last3=state.melody.slice(-3);
+          if(last3.every(n=>n.midi===prevMidi)&&chosen.midi===prevMidi){
+            stats.corrections++;
+            addReactEntryEnhanced('correct',
+              `Note ${noteName(prevMidi)} repeated 4+ times. Monotony detected. Moving to a new pitch.`,true);
+            finalNote=candidates.find(c=>c.midi!==prevMidi)||candidates[1]||chosen;
+            await wait(speed*0.3);
+          }
+        }
+      }
+      // Check chord tone requirement on strong beats
+      if((beat===0||beat===2)&&!chordTones.includes(finalNote.midi%12)){
+        const chordCandidate=candidates.find(c=>chordTones.includes(c.midi%12)&&Math.abs(c.midi-prevMidi)<=4);
+        if(chordCandidate&&Math.random()<0.6){
+          stats.corrections++;
+          addReactEntryEnhanced('correct',
+            `Strong beat (${beat+1}) should have chord tone. Adjusting from ${noteName(finalNote.midi)} to ${noteName(chordCandidate.midi)} (chord tone of ${chord.name}).`,true);
+          finalNote=chordCandidate;
+          await wait(speed*0.25);
+        }
+      }
+
+      // ACT
+      const isChordTone=chordTones.includes(finalNote.midi%12);
+      stats.totalNotes++;
+      if(isChordTone)stats.chordTones++;else stats.passingTones++;
+      addReactEntryEnhanced('act',`Play ${noteName(finalNote.midi)} (${finalNote.reason}) \u2014 ${isChordTone?'consonant':'passing tone creating tension'}`,false);
+      playNote(finalNote.midi,0.35,'triangle',0.15);
+      highlightKey(finalNote.midi);
+      state.melody.push({midi:finalNote.midi,bar,beat,duration:1});
+      prevMidi=finalNote.midi;
+      drawPianoRoll();updateStatsDisplay();
+      await wait(speed*0.35);
+    }
+    // Play the bar's chord
+    playChord(chord.midi,chord.quality,1.0,0.08);
+    highlightKey(chord.midi);
+    await wait(speed*0.4);
+  }
+  // Final self-correction pass
+  addReactEntryEnhanced('correct',
+    `Final review: ${stats.totalNotes} notes generated, ${stats.chordTones} chord tones (${Math.round(stats.chordTones/stats.totalNotes*100)}%), ${stats.corrections} corrections applied. Composition integrity verified.`,true);
+}
+
+// Wire up the enhanced versions
+const _origStartReasoning=startReasoning;
+startReasoning=async function(){
+  const keyId=$('keySelect').value;
+  speed=parseInt($('speedSelect').value);
+  const mode=$('modeSelect').value;
+  state.key=KEYS[keyId];
+  state.bars=4;
+  state.running=true;
+  state.phase='reasoning';
+  $('btnStart').disabled=true;$('btnReset').disabled=false;
+  $('btnPlay').disabled=true;$('btnExport').disabled=true;
+  clearPanels();clearQueue();resetStats();
+  buildKeyboard();
+  ensureAudio();
+  startDrone(state.key);
+  setStatus('Reasoning process initiated...');
+
+  if(mode==='full'||mode==='cot'){
+    await runCoTEnhanced(state.key);
+  }
+  if(!state.running)return;
+
+  if(mode==='full'||mode==='tot'){
+    await runToTEnhanced(state.key);
+  }else{
+    state.chordProg=[
+      chordForDegree(state.key,0),chordForDegree(state.key,3),
+      chordForDegree(state.key,5),chordForDegree(state.key,4)
+    ];
+  }
+  if(!state.running)return;
+
+  if(mode==='full'||mode==='react'){
+    await runReActEnhanced(state.key);
+  }
+  if(!state.running)return;
+
+  state.phase='done';
+  stopDrone();
+  setStatus('Composition complete! Click "Play Composition" to hear the result.');
+  $('btnPlay').disabled=false;$('btnExport').disabled=false;
+  drawPianoRoll();updateStatsDisplay();
+};
+
+// Rebuild keyboard on key change
+$('keySelect').addEventListener('change',()=>{
+  state.key=KEYS[$('keySelect').value];
+  buildKeyboard();
+});
+
+// Initial setup
+requestAnimationFrame(()=>{drawTree();drawPianoRoll()});
+</script>
+</body>
+</html>

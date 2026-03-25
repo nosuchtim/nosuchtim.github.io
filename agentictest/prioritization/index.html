@@ -1,0 +1,966 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Priority Mixer — Agentic Prioritization Engine</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#0a0a12;color:#e0e0e8;font-family:'Courier New',monospace;overflow-x:hidden;height:100vh;display:flex;flex-direction:column}
+::-webkit-scrollbar{width:6px}
+::-webkit-scrollbar-track{background:#12121e}
+::-webkit-scrollbar-thumb{background:#3a3a5c;border-radius:3px}
+
+.header{display:flex;align-items:center;justify-content:space-between;padding:8px 16px;background:linear-gradient(180deg,#14142a,#0e0e1c);border-bottom:1px solid #2a2a4a;flex-shrink:0}
+.header h1{font-size:18px;color:#c0c0ff;letter-spacing:2px;text-transform:uppercase}
+.header .bpm-ctrl{display:flex;align-items:center;gap:8px;font-size:12px}
+.header .bpm-ctrl input{width:60px;background:#1a1a2e;border:1px solid #3a3a5c;color:#e0e0e8;padding:2px 6px;text-align:center;border-radius:3px}
+.header .controls{display:flex;gap:6px}
+.btn{padding:5px 12px;border:1px solid #3a3a5c;background:#1a1a2e;color:#c0c0ff;cursor:pointer;border-radius:4px;font-size:11px;font-family:inherit;transition:all .2s}
+.btn:hover{background:#2a2a4e;border-color:#6a6aff}
+.btn.active{background:#3a3a6e;border-color:#8a8aff;color:#fff}
+.btn.danger{border-color:#ff4a4a;color:#ff6a6a}
+.btn.danger:hover{background:#3a1a1e}
+.btn.flood{border-color:#ffaa00;color:#ffcc44}
+.btn.flood:hover{background:#3a2a1e}
+
+.main{display:flex;flex:1;overflow:hidden}
+.left-panel{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.right-panel{width:280px;background:#0e0e1a;border-left:1px solid #2a2a4a;display:flex;flex-direction:column;flex-shrink:0}
+
+/* Conveyor Belt */
+.conveyor-section{height:110px;border-bottom:1px solid #2a2a4a;position:relative;overflow:hidden;flex-shrink:0;background:linear-gradient(180deg,#0c0c18,#0a0a14)}
+.conveyor-label{position:absolute;top:4px;left:10px;font-size:10px;color:#6a6a8a;text-transform:uppercase;letter-spacing:1px;z-index:2}
+.conveyor-track{position:absolute;top:22px;left:0;right:0;bottom:8px;overflow:hidden}
+.conveyor-card{position:absolute;background:linear-gradient(135deg,#1a1a30,#1e1e38);border:1px solid #3a3a5c;border-radius:6px;padding:6px 8px;width:160px;height:76px;transition:transform .3s,opacity .3s;cursor:pointer;font-size:10px}
+.conveyor-card:hover{border-color:#7a7aff;transform:scale(1.05)!important}
+.conveyor-card .cc-name{font-weight:bold;color:#d0d0ff;font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.conveyor-card .cc-score{color:#ffcc44;font-size:13px;font-weight:bold;float:right}
+.conveyor-card .cc-badges{display:flex;gap:3px;margin-top:3px}
+.badge{padding:1px 5px;border-radius:3px;font-size:9px;font-weight:bold;text-transform:uppercase}
+.badge.low{background:#1a3a1a;color:#4a4}
+.badge.med{background:#3a3a1a;color:#aa4}
+.badge.high{background:#3a2a1a;color:#fa0}
+.badge.critical{background:#3a1a1a;color:#f44;animation:critPulse 1s infinite}
+@keyframes critPulse{0%,100%{opacity:1}50%{opacity:.5}}
+.stars{color:#ffaa00;font-size:9px}
+.cc-dep{color:#8888aa;font-size:9px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.cc-cost{color:#66aacc;font-size:9px}
+
+/* Middle Section */
+.middle-section{flex:1;display:flex;overflow:hidden;border-bottom:1px solid #2a2a4a}
+.queue-panel{width:260px;border-right:1px solid #2a2a4a;display:flex;flex-direction:column;flex-shrink:0}
+.panel-title{font-size:10px;color:#6a6a8a;text-transform:uppercase;letter-spacing:1px;padding:6px 10px;border-bottom:1px solid #1a1a2e;background:#0c0c18;flex-shrink:0}
+.queue-list{flex:1;overflow-y:auto;padding:4px}
+.queue-item{background:#12122a;border:1px solid #2a2a4a;border-radius:4px;padding:5px 8px;margin-bottom:3px;cursor:pointer;transition:all .3s;position:relative;font-size:10px}
+.queue-item:hover{border-color:#6a6aff;background:#1a1a3a}
+.queue-item.glow-low{box-shadow:0 0 4px rgba(60,180,60,.3)}
+.queue-item.glow-med{box-shadow:0 0 6px rgba(180,180,60,.4)}
+.queue-item.glow-high{box-shadow:0 0 8px rgba(255,160,0,.5)}
+.queue-item.glow-critical{box-shadow:0 0 12px rgba(255,60,60,.6);animation:qPulse .8s infinite}
+@keyframes qPulse{0%,100%{box-shadow:0 0 12px rgba(255,60,60,.6)}50%{box-shadow:0 0 20px rgba(255,60,60,.9)}}
+.qi-top{display:flex;justify-content:space-between;align-items:center}
+.qi-name{color:#c0c0ee;font-weight:bold;font-size:11px}
+.qi-total{color:#ffcc44;font-weight:bold;font-size:14px}
+.qi-breakdown{display:flex;gap:6px;margin-top:3px;color:#888}
+.qi-breakdown span{font-size:9px}
+.qi-bar{height:2px;background:#1a1a3a;margin-top:3px;border-radius:1px;overflow:hidden}
+.qi-bar-fill{height:100%;border-radius:1px;transition:width .3s}
+
+/* Scheduler */
+.scheduler-panel{width:120px;display:flex;flex-direction:column;align-items:center;justify-content:center;border-right:1px solid #2a2a4a;position:relative;flex-shrink:0}
+.scheduler-node{width:80px;height:80px;border-radius:50%;border:2px solid #4a4aff;display:flex;align-items:center;justify-content:center;font-size:10px;text-align:center;color:#aaaaff;position:relative;transition:all .3s}
+.scheduler-node.deciding{border-color:#ffaa00;box-shadow:0 0 20px rgba(255,170,0,.4);color:#ffcc44}
+.scheduler-node.scheduling{border-color:#44ff44;box-shadow:0 0 20px rgba(60,255,60,.4);color:#88ff88}
+.scheduler-node.preempting{border-color:#ff4444;box-shadow:0 0 20px rgba(255,60,60,.5);color:#ff8888}
+.sched-arrows{position:absolute;top:50%;width:20px;color:#3a3a6a;font-size:18px}
+.sched-arrows.left{left:-20px}
+.sched-arrows.right{right:-20px}
+
+/* Active Channels */
+.channels-panel{flex:1;display:flex;flex-direction:column;overflow:hidden}
+.channels-grid{flex:1;display:grid;grid-template-columns:repeat(6,1fr);gap:4px;padding:6px;overflow:hidden}
+.channel-slot{background:#0c0c1a;border:1px solid #2a2a3a;border-radius:6px;display:flex;flex-direction:column;padding:4px;position:relative;min-height:0}
+.channel-slot.active{border-color:#4a4aff}
+.channel-slot.bumped{animation:bump .5s ease}
+@keyframes bump{0%{transform:scale(1);border-color:#ff4444}50%{transform:scale(1.05);border-color:#ff0000;box-shadow:0 0 15px rgba(255,0,0,.5)}100%{transform:scale(1);border-color:#4a4aff}}
+.ch-header{font-size:9px;color:#5a5a8a;text-align:center;border-bottom:1px solid #1a1a2e;padding-bottom:2px;margin-bottom:2px}
+.ch-name{font-size:10px;color:#c0c0ee;text-align:center;font-weight:bold;min-height:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ch-priority{font-size:9px;color:#ffcc44;text-align:center}
+.ch-meter{flex:1;display:flex;align-items:flex-end;justify-content:center;gap:1px;min-height:40px;padding:2px 0}
+.ch-bar{width:3px;background:#2a2a5a;border-radius:1px;transition:height .1s}
+.ch-bar.lit{background:linear-gradient(to top,#4a4aff,#8a8aff)}
+.ch-time{height:3px;background:#1a1a2e;border-radius:1px;margin-top:2px;overflow:hidden}
+.ch-time-fill{height:100%;background:#4a4aff;transition:width .1s linear}
+.ch-stop{font-size:9px;text-align:center;color:#ff6a6a;cursor:pointer;padding:2px;opacity:.5;transition:opacity .2s}
+.ch-stop:hover{opacity:1}
+.channel-slot.empty .ch-name{color:#3a3a5a;font-style:italic}
+
+/* Bottom Dashboard */
+.dashboard{height:140px;border-top:1px solid #2a2a4a;display:flex;flex-shrink:0;background:#0c0c18}
+.dash-weights{width:260px;border-right:1px solid #2a2a4a;padding:8px 10px;overflow-y:auto}
+.dash-weights h3{font-size:10px;color:#6a6a8a;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.weight-row{display:flex;align-items:center;gap:6px;margin-bottom:4px}
+.weight-row label{font-size:10px;color:#aaa;width:75px;flex-shrink:0}
+.weight-row input[type=range]{flex:1;accent-color:#6a6aff;height:14px}
+.weight-row .wv{font-size:10px;color:#ffcc44;width:20px;text-align:right}
+.dash-stats{flex:1;padding:8px 12px;display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.stat-box{background:#10102a;border:1px solid #2a2a3a;border-radius:4px;padding:6px 8px;text-align:center}
+.stat-box .stat-val{font-size:20px;color:#c0c0ff;font-weight:bold}
+.stat-box .stat-label{font-size:9px;color:#6a6a8a;text-transform:uppercase;margin-top:2px}
+.dash-chart{width:200px;border-left:1px solid #2a2a4a;padding:8px;display:flex;flex-direction:column;align-items:center}
+.dash-chart h3{font-size:10px;color:#6a6a8a;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;align-self:flex-start}
+.util-bars{display:flex;gap:4px;align-items:flex-end;flex:1;width:100%}
+.util-bar-wrap{flex:1;display:flex;flex-direction:column;align-items:center}
+.util-bar-bg{width:100%;height:70px;background:#0a0a16;border-radius:3px;display:flex;align-items:flex-end;overflow:hidden}
+.util-bar-fill{width:100%;border-radius:3px 3px 0 0;transition:height .3s;min-height:0}
+.util-bar-label{font-size:8px;color:#6a6a8a;margin-top:2px}
+
+/* Right Panel (Event Log) */
+.right-panel .panel-title{border-bottom:1px solid #2a2a4a}
+.event-log{flex:1;overflow-y:auto;padding:4px 6px;font-size:10px}
+.log-entry{padding:3px 4px;border-bottom:1px solid #14142a;line-height:1.4}
+.log-entry.schedule{color:#44cc44}
+.log-entry.preempt{color:#ff6a6a}
+.log-entry.expire{color:#888}
+.log-entry.depend{color:#ccaa44}
+.log-entry.reject{color:#aa6688}
+.log-entry .log-time{color:#4a4a6a;font-size:9px}
+
+/* Manual Add */
+.manual-panel{border-top:1px solid #2a2a4a;padding:8px;flex-shrink:0}
+.manual-panel h3{font-size:10px;color:#6a6a8a;text-transform:uppercase;letter-spacing:1px;margin-bottom:6px}
+.manual-row{display:flex;gap:4px;margin-bottom:4px;align-items:center}
+.manual-row label{font-size:9px;color:#888;width:55px;flex-shrink:0}
+.manual-row select,.manual-row input{background:#1a1a2e;border:1px solid #3a3a5c;color:#e0e0e8;padding:2px 4px;font-size:10px;font-family:inherit;border-radius:3px;flex:1}
+.speed-ctrl{display:flex;align-items:center;gap:6px;padding:4px 10px;border-bottom:1px solid #2a2a4a;font-size:10px;color:#888;flex-shrink:0}
+.speed-ctrl input{width:80px;accent-color:#6a6aff}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <h1>Priority Mixer</h1>
+  <div class="bpm-ctrl">
+    <span>BPM:</span>
+    <input type="number" id="bpmInput" value="120" min="60" max="200">
+  </div>
+  <div class="controls">
+    <button class="btn active" id="autoGenBtn" onclick="toggleAutoGen()">Auto-Generate: ON</button>
+    <button class="btn flood" onclick="floodRequests()">Flood (20)</button>
+    <button class="btn danger" onclick="clearQueue()">Clear Queue</button>
+  </div>
+</div>
+
+<div class="main">
+  <div class="left-panel">
+    <!-- Conveyor Belt -->
+    <div class="conveyor-section">
+      <div class="conveyor-label">Incoming Requests</div>
+      <div class="conveyor-track" id="conveyorTrack"></div>
+    </div>
+
+    <!-- Middle: Queue + Scheduler + Channels -->
+    <div class="middle-section">
+      <div class="queue-panel">
+        <div class="panel-title">Priority Queue</div>
+        <div class="queue-list" id="queueList"></div>
+      </div>
+      <div class="scheduler-panel">
+        <span class="sched-arrows left">&raquo;</span>
+        <div class="scheduler-node" id="schedulerNode">SCHEDULER<br>IDLE</div>
+        <span class="sched-arrows right">&raquo;</span>
+      </div>
+      <div class="channels-panel">
+        <div class="panel-title">Active Channels (6)</div>
+        <div class="channels-grid" id="channelsGrid"></div>
+      </div>
+    </div>
+
+    <!-- Dashboard -->
+    <div class="dashboard">
+      <div class="dash-weights">
+        <h3>Priority Weights</h3>
+        <div class="weight-row"><label>Urgency</label><input type="range" min="0" max="20" value="10" id="wUrg" oninput="updateWeights()"><span class="wv" id="wUrgV">10</span></div>
+        <div class="weight-row"><label>Importance</label><input type="range" min="0" max="20" value="10" id="wImp" oninput="updateWeights()"><span class="wv" id="wImpV">10</span></div>
+        <div class="weight-row"><label>Dependency</label><input type="range" min="0" max="20" value="5" id="wDep" oninput="updateWeights()"><span class="wv" id="wDepV">5</span></div>
+        <div class="weight-row"><label>Freshness</label><input type="range" min="0" max="20" value="5" id="wFresh" oninput="updateWeights()"><span class="wv" id="wFreshV">5</span></div>
+      </div>
+      <div class="dash-stats" id="dashStats">
+        <div class="stat-box"><div class="stat-val" id="statTotal">0</div><div class="stat-label">Total Requests</div></div>
+        <div class="stat-box"><div class="stat-val" id="statAccepted">0</div><div class="stat-label">Accepted</div></div>
+        <div class="stat-box"><div class="stat-val" id="statPreempted">0</div><div class="stat-label">Preempted</div></div>
+        <div class="stat-box"><div class="stat-val" id="statExpired">0</div><div class="stat-label">Expired</div></div>
+        <div class="stat-box"><div class="stat-val" id="statRejected">0</div><div class="stat-label">Rejected</div></div>
+        <div class="stat-box"><div class="stat-val" id="statAvgWait">0s</div><div class="stat-label">Avg Wait</div></div>
+        <div class="stat-box"><div class="stat-val" id="statUtilPct">0%</div><div class="stat-label">Utilization</div></div>
+        <div class="stat-box"><div class="stat-val" id="statStarved">0</div><div class="stat-label">Starved</div></div>
+      </div>
+      <div class="dash-chart">
+        <h3>Channel Util.</h3>
+        <div class="util-bars" id="utilBars"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right Panel -->
+  <div class="right-panel">
+    <div class="panel-title">Event Log</div>
+    <div class="speed-ctrl">
+      <label>Gen Speed:</label>
+      <input type="range" min="1" max="20" value="5" id="speedSlider" oninput="updateSpeed()">
+      <span id="speedVal">5/s</span>
+    </div>
+    <div class="event-log" id="eventLog"></div>
+    <div class="manual-panel">
+      <h3>Manual Add</h3>
+      <div class="manual-row"><label>Sound:</label><select id="manSound"></select></div>
+      <div class="manual-row"><label>Urgency:</label><select id="manUrg"><option value="0">LOW</option><option value="1" selected>MED</option><option value="2">HIGH</option><option value="3">CRITICAL</option></select></div>
+      <div class="manual-row"><label>Import.:</label><input type="number" id="manImp" value="3" min="1" max="5"></div>
+      <button class="btn" onclick="manualAdd()" style="width:100%;margin-top:4px">Add to Queue</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== SOUND DEFINITIONS =====
+const SOUND_TYPES = [
+  {id:'kick',name:'Kick Pattern',category:'rhythm',color:'#ff4466',depReq:null,cost:1},
+  {id:'snare',name:'Snare Roll',category:'rhythm',color:'#ff8844',depReq:null,cost:1},
+  {id:'hihat',name:'Hi-Hat Loop',category:'rhythm',color:'#ffcc44',depReq:'kick',cost:1},
+  {id:'bass',name:'Bass Pulse',category:'bass',color:'#44aaff',depReq:'kick',cost:1},
+  {id:'subbass',name:'Sub Bass',category:'bass',color:'#2266cc',depReq:'kick',cost:1},
+  {id:'lead',name:'Lead Melody',category:'melody',color:'#aa44ff',depReq:'bass',cost:1},
+  {id:'arp',name:'Arpeggio',category:'melody',color:'#cc66ff',depReq:null,cost:1},
+  {id:'pad',name:'Ambient Pad',category:'texture',color:'#44ffaa',depReq:null,cost:2},
+  {id:'texture',name:'Ambient Texture',category:'texture',color:'#22cc88',depReq:null,cost:1},
+  {id:'sweep',name:'FX Sweep',category:'fx',color:'#ff44aa',depReq:null,cost:1},
+  {id:'riser',name:'Riser',category:'fx',color:'#ff66cc',depReq:null,cost:1},
+  {id:'vocal',name:'Vocal Chop',category:'vocal',color:'#ffaa88',depReq:'lead',cost:1},
+  {id:'perc',name:'Percussion Hit',category:'rhythm',color:'#ccaa44',depReq:null,cost:1},
+  {id:'noise',name:'Noise Wash',category:'texture',color:'#668888',depReq:null,cost:1},
+];
+
+const URGENCY_LABELS = ['LOW','MED','HIGH','CRITICAL'];
+const URGENCY_CLASSES = ['low','med','high','critical'];
+const NUM_CHANNELS = 6;
+const MAX_QUEUE = 30;
+const EXPIRE_TIME = 15000; // ms before a queued item expires
+
+let audioCtx = null;
+let masterGain = null;
+let channels = Array.from({length:NUM_CHANNELS}, (_,i) => ({
+  id:i, sound:null, gainNode:null, sources:[], endTime:0, startTime:0, priority:0, analyser:null, dataArray:null
+}));
+
+let priorityQueue = [];
+let conveyorCards = [];
+let autoGenEnabled = true;
+let genSpeed = 5;
+let bpm = 120;
+let requestIdCounter = 0;
+let stats = {total:0,accepted:0,preempted:0,expired:0,rejected:0,starved:0,waitTimes:[]};
+let weights = {urgency:10,importance:10,dependency:5,freshness:5};
+let channelHistory = Array.from({length:NUM_CHANNELS},()=>({active:0,total:0}));
+let schedulerState = 'idle';
+let lastGenTime = 0;
+let animFrame;
+
+// ===== AUDIO CONTEXT INIT =====
+function initAudio(){
+  if(audioCtx) return;
+  audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  masterGain = audioCtx.createGain();
+  masterGain.gain.value = 0.6;
+  masterGain.connect(audioCtx.destination);
+  channels.forEach(ch => {
+    ch.gainNode = audioCtx.createGain();
+    ch.gainNode.gain.value = 0.7;
+    ch.gainNode.connect(masterGain);
+    ch.analyser = audioCtx.createAnalyser();
+    ch.analyser.fftSize = 64;
+    ch.dataArray = new Uint8Array(ch.analyser.frequencyBinCount);
+    ch.gainNode.connect(ch.analyser);
+  });
+}
+
+// ===== SOUND SYNTHESIS =====
+function playSound(soundType, channel, duration){
+  if(!audioCtx) return;
+  const now = audioCtx.currentTime;
+  const gain = channel.gainNode;
+  const dest = gain;
+
+  // Stop any current sources
+  channel.sources.forEach(s => {try{s.stop()}catch(e){}});
+  channel.sources = [];
+
+  const beatLen = 60/bpm;
+
+  switch(soundType.id){
+    case 'kick': {
+      const osc=audioCtx.createOscillator();
+      const g=audioCtx.createGain();
+      osc.type='sine';osc.frequency.setValueAtTime(150,now);
+      osc.frequency.exponentialRampToValueAtTime(30,now+0.15);
+      g.gain.setValueAtTime(1,now);g.gain.exponentialRampToValueAtTime(0.001,now+0.3);
+      osc.connect(g);g.connect(dest);osc.start(now);osc.stop(now+duration);
+      channel.sources.push(osc);
+      // repeated kicks
+      for(let i=1;i<Math.floor(duration/beatLen);i++){
+        const t=now+i*beatLen;
+        const o2=audioCtx.createOscillator();const g2=audioCtx.createGain();
+        o2.type='sine';o2.frequency.setValueAtTime(150,t);o2.frequency.exponentialRampToValueAtTime(30,t+0.15);
+        g2.gain.setValueAtTime(0,t-0.01);g2.gain.setValueAtTime(1,t);g2.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+        o2.connect(g2);g2.connect(dest);o2.start(t-0.01);o2.stop(t+0.35);channel.sources.push(o2);
+      }
+      break;
+    }
+    case 'snare': {
+      for(let i=0;i<Math.floor(duration/(beatLen*2));i++){
+        const t=now+i*beatLen*2+beatLen;
+        const buf=audioCtx.createBufferSource();const len=audioCtx.sampleRate*0.15;
+        const buffer=audioCtx.createBuffer(1,len,audioCtx.sampleRate);
+        const data=buffer.getChannelData(0);
+        for(let j=0;j<len;j++) data[j]=(Math.random()*2-1)*Math.exp(-j/(len*0.15));
+        buf.buffer=buffer;const g=audioCtx.createGain();
+        g.gain.setValueAtTime(0,t-0.01);g.gain.setValueAtTime(0.8,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.15);
+        const osc=audioCtx.createOscillator();osc.type='triangle';osc.frequency.value=180;
+        const g2=audioCtx.createGain();g2.gain.setValueAtTime(0,t-0.01);g2.gain.setValueAtTime(0.5,t);g2.gain.exponentialRampToValueAtTime(0.001,t+0.08);
+        buf.connect(g);g.connect(dest);osc.connect(g2);g2.connect(dest);
+        buf.start(t-0.01);osc.start(t-0.01);osc.stop(t+0.2);channel.sources.push(buf,osc);
+      }
+      break;
+    }
+    case 'hihat': {
+      for(let i=0;i<Math.floor(duration/(beatLen*0.5));i++){
+        const t=now+i*beatLen*0.5;
+        const buf=audioCtx.createBufferSource();const len=audioCtx.sampleRate*0.05;
+        const buffer=audioCtx.createBuffer(1,len,audioCtx.sampleRate);
+        const data=buffer.getChannelData(0);
+        for(let j=0;j<len;j++) data[j]=(Math.random()*2-1)*Math.exp(-j/(len*0.08));
+        buf.buffer=buffer;const g=audioCtx.createGain();
+        const bpf=audioCtx.createBiquadFilter();bpf.type='highpass';bpf.frequency.value=7000;
+        g.gain.setValueAtTime(0,t-0.01);g.gain.setValueAtTime(0.4,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.04);
+        buf.connect(bpf);bpf.connect(g);g.connect(dest);buf.start(t-0.01);channel.sources.push(buf);
+      }
+      break;
+    }
+    case 'bass': {
+      const notes=[36,36,38,36,41,36,38,36];
+      for(let i=0;i<Math.floor(duration/beatLen)&&i<notes.length*2;i++){
+        const t=now+i*beatLen;const note=notes[i%notes.length];
+        const freq=440*Math.pow(2,(note-69)/12);
+        const osc=audioCtx.createOscillator();osc.type='sawtooth';osc.frequency.value=freq;
+        const g=audioCtx.createGain();g.gain.setValueAtTime(0,t-0.01);g.gain.setValueAtTime(0.5,t);
+        g.gain.setValueAtTime(0.5,t+beatLen*0.7);g.gain.exponentialRampToValueAtTime(0.001,t+beatLen*0.95);
+        const flt=audioCtx.createBiquadFilter();flt.type='lowpass';flt.frequency.value=400;flt.Q.value=4;
+        osc.connect(flt);flt.connect(g);g.connect(dest);osc.start(t-0.01);osc.stop(t+beatLen);channel.sources.push(osc);
+      }
+      break;
+    }
+    case 'subbass': {
+      const osc=audioCtx.createOscillator();osc.type='sine';osc.frequency.value=40;
+      const g=audioCtx.createGain();g.gain.setValueAtTime(0.6,now);g.gain.setValueAtTime(0.6,now+duration-0.1);
+      g.gain.exponentialRampToValueAtTime(0.001,now+duration);
+      osc.connect(g);g.connect(dest);osc.start(now);osc.stop(now+duration);channel.sources.push(osc);
+      break;
+    }
+    case 'lead': {
+      const scale=[60,62,64,67,69,72,74,76];
+      const stepLen=beatLen*0.5;
+      for(let i=0;i<Math.floor(duration/stepLen)&&i<32;i++){
+        const t=now+i*stepLen;const note=scale[Math.floor(Math.random()*scale.length)];
+        const freq=440*Math.pow(2,(note-69)/12);
+        const osc=audioCtx.createOscillator();osc.type='square';osc.frequency.value=freq;
+        const g=audioCtx.createGain();g.gain.setValueAtTime(0,t-0.01);g.gain.linearRampToValueAtTime(0.25,t+0.02);
+        g.gain.setValueAtTime(0.2,t+stepLen*0.6);g.gain.exponentialRampToValueAtTime(0.001,t+stepLen*0.95);
+        const flt=audioCtx.createBiquadFilter();flt.type='lowpass';flt.frequency.value=2000;flt.Q.value=6;
+        flt.frequency.setValueAtTime(2000,t);flt.frequency.exponentialRampToValueAtTime(600,t+stepLen*0.8);
+        osc.connect(flt);flt.connect(g);g.connect(dest);osc.start(t-0.01);osc.stop(t+stepLen);channel.sources.push(osc);
+      }
+      break;
+    }
+    case 'arp': {
+      const notes=[48,52,55,60,64,60,55,52];const stepLen=beatLen*0.25;
+      for(let i=0;i<Math.floor(duration/stepLen)&&i<64;i++){
+        const t=now+i*stepLen;const note=notes[i%notes.length];
+        const freq=440*Math.pow(2,(note-69)/12);
+        const osc=audioCtx.createOscillator();osc.type='sawtooth';osc.frequency.value=freq;
+        const g=audioCtx.createGain();g.gain.setValueAtTime(0,t-0.01);g.gain.setValueAtTime(0.2,t);
+        g.gain.exponentialRampToValueAtTime(0.001,t+stepLen*0.8);
+        const flt=audioCtx.createBiquadFilter();flt.type='lowpass';flt.frequency.value=3000;
+        osc.connect(flt);flt.connect(g);g.connect(dest);osc.start(t-0.01);osc.stop(t+stepLen);channel.sources.push(osc);
+      }
+      break;
+    }
+    case 'pad': {
+      const freqs=[220,220*1.005,330,330*1.003,440];
+      freqs.forEach(f=>{
+        const osc=audioCtx.createOscillator();osc.type='sine';osc.frequency.value=f;
+        const g=audioCtx.createGain();g.gain.setValueAtTime(0,now);
+        g.gain.linearRampToValueAtTime(0.08,now+1);g.gain.setValueAtTime(0.08,now+duration-1);
+        g.gain.linearRampToValueAtTime(0,now+duration);
+        osc.connect(g);g.connect(dest);osc.start(now);osc.stop(now+duration);channel.sources.push(osc);
+      });
+      break;
+    }
+    case 'texture': {
+      const buf=audioCtx.createBufferSource();const len=audioCtx.sampleRate*duration;
+      const buffer=audioCtx.createBuffer(1,len,audioCtx.sampleRate);
+      const data=buffer.getChannelData(0);
+      for(let j=0;j<len;j++) data[j]=(Math.random()*2-1)*0.15;
+      buf.buffer=buffer;
+      const flt=audioCtx.createBiquadFilter();flt.type='bandpass';flt.frequency.value=800;flt.Q.value=0.5;
+      const g=audioCtx.createGain();g.gain.setValueAtTime(0,now);g.gain.linearRampToValueAtTime(0.3,now+0.5);
+      g.gain.setValueAtTime(0.3,now+duration-0.5);g.gain.linearRampToValueAtTime(0,now+duration);
+      buf.connect(flt);flt.connect(g);g.connect(dest);buf.start(now);channel.sources.push(buf);
+      break;
+    }
+    case 'sweep': {
+      const osc=audioCtx.createOscillator();osc.type='sawtooth';osc.frequency.value=100;
+      const flt=audioCtx.createBiquadFilter();flt.type='lowpass';flt.Q.value=12;
+      flt.frequency.setValueAtTime(100,now);flt.frequency.exponentialRampToValueAtTime(8000,now+duration*0.8);
+      flt.frequency.exponentialRampToValueAtTime(100,now+duration);
+      const g=audioCtx.createGain();g.gain.setValueAtTime(0.3,now);g.gain.setValueAtTime(0.3,now+duration-0.1);
+      g.gain.exponentialRampToValueAtTime(0.001,now+duration);
+      osc.connect(flt);flt.connect(g);g.connect(dest);osc.start(now);osc.stop(now+duration);channel.sources.push(osc);
+      break;
+    }
+    case 'riser': {
+      const osc=audioCtx.createOscillator();osc.type='sawtooth';
+      osc.frequency.setValueAtTime(80,now);osc.frequency.exponentialRampToValueAtTime(2000,now+duration);
+      const g=audioCtx.createGain();g.gain.setValueAtTime(0.01,now);g.gain.exponentialRampToValueAtTime(0.5,now+duration*0.9);
+      g.gain.exponentialRampToValueAtTime(0.001,now+duration);
+      const flt=audioCtx.createBiquadFilter();flt.type='lowpass';flt.frequency.value=4000;flt.Q.value=4;
+      osc.connect(flt);flt.connect(g);g.connect(dest);osc.start(now);osc.stop(now+duration);channel.sources.push(osc);
+      break;
+    }
+    case 'vocal': {
+      const formants=[{f:700,q:8},{f:1200,q:6},{f:2600,q:4}];
+      const osc=audioCtx.createOscillator();osc.type='sawtooth';osc.frequency.value=180;
+      const g0=audioCtx.createGain();g0.gain.value=0.15;
+      formants.forEach(fm=>{
+        const flt=audioCtx.createBiquadFilter();flt.type='bandpass';flt.frequency.value=fm.f;flt.Q.value=fm.q;
+        const g=audioCtx.createGain();g.gain.value=0.25;
+        osc.connect(flt);flt.connect(g);g.connect(g0);
+      });
+      g0.connect(dest);
+      const env=audioCtx.createGain();env.gain.setValueAtTime(0,now);env.gain.linearRampToValueAtTime(1,now+0.1);
+      env.gain.setValueAtTime(1,now+duration-0.2);env.gain.linearRampToValueAtTime(0,now+duration);
+      // re-wire through env
+      g0.disconnect();g0.connect(env);env.connect(dest);
+      osc.start(now);osc.stop(now+duration);channel.sources.push(osc);
+      break;
+    }
+    case 'perc': {
+      for(let i=0;i<Math.floor(duration/beatLen);i++){
+        const t=now+i*beatLen;
+        const buf=audioCtx.createBufferSource();const len=audioCtx.sampleRate*0.08;
+        const buffer=audioCtx.createBuffer(1,len,audioCtx.sampleRate);
+        const data=buffer.getChannelData(0);
+        for(let j=0;j<len;j++) data[j]=(Math.random()*2-1)*Math.exp(-j/(len*0.1));
+        buf.buffer=buffer;
+        const flt=audioCtx.createBiquadFilter();flt.type='bandpass';flt.frequency.value=800+Math.random()*2000;flt.Q.value=3;
+        const g=audioCtx.createGain();g.gain.setValueAtTime(0,t-0.01);g.gain.setValueAtTime(0.5,t);
+        g.gain.exponentialRampToValueAtTime(0.001,t+0.08);
+        buf.connect(flt);flt.connect(g);g.connect(dest);buf.start(t-0.01);channel.sources.push(buf);
+      }
+      break;
+    }
+    case 'noise': {
+      const buf=audioCtx.createBufferSource();const len=audioCtx.sampleRate*duration;
+      const buffer=audioCtx.createBuffer(1,len,audioCtx.sampleRate);const data=buffer.getChannelData(0);
+      for(let j=0;j<len;j++) data[j]=(Math.random()*2-1)*0.08;
+      buf.buffer=buffer;
+      const flt=audioCtx.createBiquadFilter();flt.type='lowpass';flt.frequency.value=1200;
+      const g=audioCtx.createGain();g.gain.setValueAtTime(0,now);g.gain.linearRampToValueAtTime(0.4,now+1);
+      g.gain.setValueAtTime(0.4,now+duration-1);g.gain.linearRampToValueAtTime(0,now+duration);
+      buf.connect(flt);flt.connect(g);g.connect(dest);buf.start(now);channel.sources.push(buf);
+      break;
+    }
+  }
+}
+
+// ===== PRIORITY CALCULATION =====
+function calcPriority(req){
+  const urgScore = [2,5,8,10][req.urgencyLevel];
+  const impScore = req.importance * 2; // 1-5 -> 2-10
+  let depBonus = 0;
+  if(req.depReq){
+    const depActive = channels.some(ch=>ch.sound && ch.sound.id===req.depReq);
+    depBonus = depActive ? 5 : -3;
+  } else {
+    depBonus = 2;
+  }
+  const age = (Date.now()-req.createdAt)/1000;
+  const freshness = Math.max(0, 5 - age*0.3);
+
+  const raw = urgScore*(weights.urgency/10) + impScore*(weights.importance/10) + depBonus*(weights.dependency/5) + freshness*(weights.freshness/5);
+  return {
+    total: Math.round(Math.max(0,Math.min(100,raw*2.5))),
+    urgScore, impScore, depBonus: Math.max(0,depBonus), freshness: Math.round(freshness*10)/10
+  };
+}
+
+// ===== REQUEST GENERATION =====
+function createRequest(soundTypeOverride, urgOverride, impOverride){
+  const st = soundTypeOverride || SOUND_TYPES[Math.floor(Math.random()*SOUND_TYPES.length)];
+  const urgencyLevel = urgOverride !== undefined ? urgOverride : Math.random()<0.1?3:Math.random()<0.3?2:Math.random()<0.6?1:0;
+  const importance = impOverride !== undefined ? impOverride : Math.floor(Math.random()*5)+1;
+  const duration = (2 + Math.floor(Math.random()*6)) * (60/bpm); // 2-8 beats
+
+  const req = {
+    id: ++requestIdCounter,
+    soundType: st,
+    urgencyLevel,
+    importance,
+    depReq: st.depReq,
+    cost: st.cost,
+    duration,
+    createdAt: Date.now(),
+    priority: null
+  };
+  req.priority = calcPriority(req);
+  stats.total++;
+  return req;
+}
+
+// ===== CONVEYOR BELT =====
+function addToConveyor(req){
+  const card = {req, x: 1200, opacity:1, entering:true};
+  conveyorCards.push(card);
+  // After card scrolls in, add to queue
+  setTimeout(()=>{
+    card.entering = false;
+    addToQueue(req);
+  }, 1200);
+}
+
+function renderConveyor(){
+  const track = document.getElementById('conveyorTrack');
+  track.innerHTML = '';
+  conveyorCards.forEach((card,i)=>{
+    if(card.entering) card.x = Math.max(10 + i*170, card.x - 4);
+    else {card.opacity -= 0.02; card.x -= 1;}
+    if(card.opacity <= 0) return;
+    const el = document.createElement('div');
+    el.className = 'conveyor-card';
+    el.style.transform = `translateX(${card.x}px)`;
+    el.style.opacity = card.opacity;
+    el.style.borderColor = card.req.soundType.color+'88';
+    const st = card.req.soundType;
+    const p = card.req.priority;
+    el.innerHTML = `
+      <div class="cc-name">${st.name} <span class="cc-score">${p.total}</span></div>
+      <div class="cc-badges">
+        <span class="badge ${URGENCY_CLASSES[card.req.urgencyLevel]}">${URGENCY_LABELS[card.req.urgencyLevel]}</span>
+        <span class="stars">${'&#9733;'.repeat(card.req.importance)}${'&#9734;'.repeat(5-card.req.importance)}</span>
+      </div>
+      <div class="cc-dep">${st.depReq ? 'requires: '+st.depReq : 'no deps'}</div>
+      <div class="cc-cost">cost: ${st.cost} ch</div>
+    `;
+    track.appendChild(el);
+  });
+  conveyorCards = conveyorCards.filter(c=>c.opacity>0);
+}
+
+// ===== PRIORITY QUEUE =====
+function addToQueue(req){
+  if(priorityQueue.length >= MAX_QUEUE){
+    stats.rejected++;
+    addLog('reject',`${req.soundType.name} (P:${req.priority.total}) rejected — queue full`);
+    return;
+  }
+  priorityQueue.push(req);
+  sortQueue();
+}
+
+function sortQueue(){
+  // Recalculate all priorities
+  priorityQueue.forEach(req => req.priority = calcPriority(req));
+  priorityQueue.sort((a,b) => b.priority.total - a.priority.total);
+}
+
+function renderQueue(){
+  const list = document.getElementById('queueList');
+  list.innerHTML = '';
+  priorityQueue.forEach((req,i)=>{
+    const el = document.createElement('div');
+    const p = req.priority;
+    const urgClass = URGENCY_CLASSES[req.urgencyLevel];
+    el.className = `queue-item glow-${urgClass}`;
+    const pct = p.total;
+    const barColor = pct>75?'#44ff44':pct>50?'#ffcc44':pct>25?'#ff8844':'#ff4444';
+    el.innerHTML = `
+      <div class="qi-top">
+        <span class="qi-name" style="color:${req.soundType.color}">${req.soundType.name}</span>
+        <span class="qi-total">${p.total}</span>
+      </div>
+      <div class="qi-breakdown">
+        <span>U:${p.urgScore}</span>
+        <span>I:${p.impScore}</span>
+        <span>D:${p.depBonus}</span>
+        <span>F:${p.freshness}</span>
+      </div>
+      <div class="qi-bar"><div class="qi-bar-fill" style="width:${pct}%;background:${barColor}"></div></div>
+    `;
+    el.onclick = () => boostPriority(req.id);
+    list.appendChild(el);
+  });
+}
+
+function boostPriority(reqId){
+  const req = priorityQueue.find(r=>r.id===reqId);
+  if(req){
+    req.urgencyLevel = Math.min(3, req.urgencyLevel+1);
+    req.importance = Math.min(5, req.importance+1);
+    req.priority = calcPriority(req);
+    sortQueue();
+    addLog('schedule',`Boosted ${req.soundType.name} to P:${req.priority.total}`);
+  }
+}
+
+// ===== SCHEDULER =====
+function runScheduler(){
+  if(priorityQueue.length === 0) return;
+  sortQueue();
+
+  // Check for expired requests
+  const now = Date.now();
+  const expired = [];
+  priorityQueue = priorityQueue.filter(req => {
+    if(now - req.createdAt > EXPIRE_TIME){
+      expired.push(req);
+      return false;
+    }
+    return true;
+  });
+  expired.forEach(req => {
+    stats.expired++;
+    stats.starved++;
+    addLog('expire',`${req.soundType.name} (P:${req.priority.total}) expired after ${((now-req.createdAt)/1000).toFixed(1)}s`);
+  });
+
+  // Try to schedule top request
+  const topReq = priorityQueue[0];
+  if(!topReq) return;
+
+  // Check dependency
+  if(topReq.depReq){
+    const depActive = channels.some(ch=>ch.sound && ch.sound.id===topReq.depReq);
+    if(!depActive){
+      addLog('depend',`${topReq.soundType.name} waiting — requires ${topReq.depReq} active`);
+      // Try next item without dep issue
+      for(let i=1;i<priorityQueue.length;i++){
+        const alt = priorityQueue[i];
+        if(!alt.depReq || channels.some(ch=>ch.sound&&ch.sound.id===alt.depReq)){
+          trySchedule(alt, i);
+          return;
+        }
+      }
+      return;
+    }
+  }
+
+  trySchedule(topReq, 0);
+}
+
+function trySchedule(req, queueIdx){
+  initAudio();
+
+  // Find free channels
+  const freeChannels = channels.filter(ch => !ch.sound);
+
+  if(freeChannels.length >= req.cost){
+    // Schedule on free channel
+    setSchedulerState('scheduling');
+    const ch = freeChannels[0];
+    assignToChannel(ch, req);
+    priorityQueue.splice(queueIdx, 1);
+    stats.accepted++;
+    stats.waitTimes.push(Date.now()-req.createdAt);
+    addLog('schedule',`${req.soundType.name} (P:${req.priority.total}) &rarr; Channel ${ch.id+1}`);
+  } else {
+    // Preemption check: find lowest priority active sound
+    const activeSorted = channels.filter(ch=>ch.sound).sort((a,b)=>a.priority-b.priority);
+    const lowest = activeSorted[0];
+    if(lowest && req.priority.total > lowest.priority + 10){
+      setSchedulerState('preempting');
+      const bumpedName = lowest.sound.name;
+      const bumpedP = lowest.priority;
+      stopChannel(lowest.id);
+      assignToChannel(lowest, req);
+      priorityQueue.splice(queueIdx, 1);
+      stats.accepted++;
+      stats.preempted++;
+      stats.waitTimes.push(Date.now()-req.createdAt);
+      addLog('preempt',`${bumpedName} (P:${bumpedP}) bumped by ${req.soundType.name} (P:${req.priority.total}) on Ch ${lowest.id+1}`);
+      // Bumped animation
+      const slot = document.querySelectorAll('.channel-slot')[lowest.id];
+      if(slot) slot.classList.add('bumped');
+      setTimeout(()=>{if(slot)slot.classList.remove('bumped')},600);
+    } else {
+      setSchedulerState('deciding');
+    }
+  }
+}
+
+function assignToChannel(ch, req){
+  const dur = req.duration;
+  ch.sound = req.soundType;
+  ch.priority = req.priority.total;
+  ch.startTime = Date.now();
+  ch.endTime = Date.now() + dur*1000;
+  ch.reqId = req.id;
+  playSound(req.soundType, ch, dur);
+}
+
+function stopChannel(chIdx){
+  const ch = channels[chIdx];
+  ch.sources.forEach(s=>{try{s.stop()}catch(e){}});
+  ch.sources = [];
+  ch.sound = null;
+  ch.priority = 0;
+  ch.endTime = 0;
+  ch.startTime = 0;
+}
+
+function setSchedulerState(state){
+  schedulerState = state;
+  const node = document.getElementById('schedulerNode');
+  node.className = 'scheduler-node ' + state;
+  const labels = {idle:'SCHEDULER\nIDLE',deciding:'EVALUATING\nQUEUE',scheduling:'SCHEDULING\nSOUND',preempting:'PREEMPTING\nCHANNEL'};
+  node.innerHTML = (labels[state]||'').replace('\n','<br>');
+  if(state !== 'idle') setTimeout(()=>setSchedulerState('idle'), 800);
+}
+
+// ===== CHANNEL RENDERING =====
+function initChannelsUI(){
+  const grid = document.getElementById('channelsGrid');
+  grid.innerHTML = '';
+  for(let i=0;i<NUM_CHANNELS;i++){
+    const slot = document.createElement('div');
+    slot.className = 'channel-slot empty';
+    slot.innerHTML = `
+      <div class="ch-header">CH ${i+1}</div>
+      <div class="ch-name">empty</div>
+      <div class="ch-priority">&nbsp;</div>
+      <div class="ch-meter" id="chMeter${i}"></div>
+      <div class="ch-time"><div class="ch-time-fill" id="chTime${i}"></div></div>
+      <div class="ch-stop" onclick="forceStop(${i})">&#9632; STOP</div>
+    `;
+    grid.appendChild(slot);
+  }
+}
+
+function renderChannels(){
+  const now = Date.now();
+  const slots = document.querySelectorAll('.channel-slot');
+  channels.forEach((ch,i)=>{
+    const slot = slots[i];
+    if(!slot) return;
+
+    // Check if sound ended
+    if(ch.sound && now >= ch.endTime){
+      ch.sources.forEach(s=>{try{s.stop()}catch(e){}});
+      ch.sources=[];
+      ch.sound=null;ch.priority=0;ch.endTime=0;ch.startTime=0;
+    }
+
+    if(ch.sound){
+      slot.className = 'channel-slot active';
+      slot.querySelector('.ch-name').textContent = ch.sound.name;
+      slot.querySelector('.ch-name').style.color = ch.sound.color;
+      slot.querySelector('.ch-priority').textContent = `P: ${ch.priority}`;
+      // Time bar
+      const elapsed = now - ch.startTime;
+      const total = ch.endTime - ch.startTime;
+      const pct = Math.max(0, 100 - (elapsed/total)*100);
+      document.getElementById('chTime'+i).style.width = pct+'%';
+      // Meter bars
+      const meter = document.getElementById('chMeter'+i);
+      if(ch.analyser){
+        ch.analyser.getByteFrequencyData(ch.dataArray);
+        const bars = 8;
+        let html = '';
+        for(let b=0;b<bars;b++){
+          const val = ch.dataArray[b*2]||0;
+          const h = Math.max(2, (val/255)*50);
+          html += `<div class="ch-bar ${val>20?'lit':''}" style="height:${h}px;background:${val>20?ch.sound.color+'cc':'#2a2a5a'}"></div>`;
+        }
+        meter.innerHTML = html;
+      }
+      channelHistory[i].active++;
+    } else {
+      slot.className = 'channel-slot empty';
+      slot.querySelector('.ch-name').textContent = 'empty';
+      slot.querySelector('.ch-name').style.color = '#3a3a5a';
+      slot.querySelector('.ch-priority').innerHTML = '&nbsp;';
+      document.getElementById('chTime'+i).style.width = '0%';
+      const meter = document.getElementById('chMeter'+i);
+      meter.innerHTML = Array.from({length:8},()=>'<div class="ch-bar" style="height:2px"></div>').join('');
+    }
+    channelHistory[i].total++;
+  });
+}
+
+function forceStop(chIdx){
+  initAudio();
+  if(channels[chIdx].sound){
+    const name = channels[chIdx].sound.name;
+    stopChannel(chIdx);
+    addLog('schedule',`Channel ${chIdx+1} force-stopped (${name})`);
+  }
+}
+
+// ===== EVENT LOG =====
+function addLog(type, msg){
+  const log = document.getElementById('eventLog');
+  const prefix = {schedule:'SCHEDULE',preempt:'PREEMPT',expire:'EXPIRE',depend:'DEPEND',reject:'REJECT'};
+  const entry = document.createElement('div');
+  entry.className = 'log-entry ' + type;
+  const time = new Date().toLocaleTimeString('en',{hour12:false,hour:'2-digit',minute:'2-digit',second:'2-digit'});
+  entry.innerHTML = `<span class="log-time">${time}</span> [${prefix[type]||type}] ${msg}`;
+  log.insertBefore(entry, log.firstChild);
+  // Trim log
+  while(log.children.length > 100) log.removeChild(log.lastChild);
+}
+
+// ===== STATS =====
+function renderStats(){
+  document.getElementById('statTotal').textContent = stats.total;
+  document.getElementById('statAccepted').textContent = stats.accepted;
+  document.getElementById('statPreempted').textContent = stats.preempted;
+  document.getElementById('statExpired').textContent = stats.expired;
+  document.getElementById('statRejected').textContent = stats.rejected;
+  document.getElementById('statStarved').textContent = stats.starved;
+
+  const avgWait = stats.waitTimes.length > 0
+    ? (stats.waitTimes.reduce((a,b)=>a+b,0)/stats.waitTimes.length/1000).toFixed(1)
+    : '0';
+  document.getElementById('statAvgWait').textContent = avgWait+'s';
+
+  const activeCount = channels.filter(ch=>ch.sound).length;
+  const util = Math.round((activeCount/NUM_CHANNELS)*100);
+  document.getElementById('statUtilPct').textContent = util+'%';
+
+  // Channel utilization bars
+  const utilBars = document.getElementById('utilBars');
+  utilBars.innerHTML = '';
+  channels.forEach((ch,i)=>{
+    const pct = channelHistory[i].total > 0 ? Math.round((channelHistory[i].active/channelHistory[i].total)*100) : 0;
+    const colors = ['#4a4aff','#6a4aff','#4a6aff','#8a4aff','#4a8aff','#6a6aff'];
+    utilBars.innerHTML += `
+      <div class="util-bar-wrap">
+        <div class="util-bar-bg"><div class="util-bar-fill" style="height:${pct}%;background:${colors[i]}"></div></div>
+        <div class="util-bar-label">${i+1}</div>
+      </div>
+    `;
+  });
+}
+
+// ===== CONTROLS =====
+function toggleAutoGen(){
+  autoGenEnabled = !autoGenEnabled;
+  const btn = document.getElementById('autoGenBtn');
+  btn.textContent = 'Auto-Generate: ' + (autoGenEnabled?'ON':'OFF');
+  btn.classList.toggle('active', autoGenEnabled);
+}
+
+function floodRequests(){
+  for(let i=0;i<20;i++){
+    setTimeout(()=>{
+      const req = createRequest();
+      addToConveyor(req);
+    }, i*80);
+  }
+}
+
+function clearQueue(){
+  const count = priorityQueue.length;
+  priorityQueue = [];
+  addLog('schedule',`Queue cleared (${count} items removed)`);
+}
+
+function updateWeights(){
+  weights.urgency = +document.getElementById('wUrg').value;
+  weights.importance = +document.getElementById('wImp').value;
+  weights.dependency = +document.getElementById('wDep').value;
+  weights.freshness = +document.getElementById('wFresh').value;
+  document.getElementById('wUrgV').textContent = weights.urgency;
+  document.getElementById('wImpV').textContent = weights.importance;
+  document.getElementById('wDepV').textContent = weights.dependency;
+  document.getElementById('wFreshV').textContent = weights.freshness;
+  sortQueue();
+}
+
+function updateSpeed(){
+  genSpeed = +document.getElementById('speedSlider').value;
+  document.getElementById('speedVal').textContent = genSpeed+'/s';
+}
+
+function manualAdd(){
+  initAudio();
+  const stIdx = document.getElementById('manSound').selectedIndex;
+  const st = SOUND_TYPES[stIdx];
+  const urg = +document.getElementById('manUrg').value;
+  const imp = Math.max(1,Math.min(5,+document.getElementById('manImp').value));
+  const req = createRequest(st, urg, imp);
+  addToConveyor(req);
+}
+
+// ===== INIT =====
+function initManualPanel(){
+  const sel = document.getElementById('manSound');
+  SOUND_TYPES.forEach(st=>{
+    const opt = document.createElement('option');
+    opt.textContent = st.name;
+    sel.appendChild(opt);
+  });
+}
+
+// ===== BPM =====
+document.getElementById('bpmInput').addEventListener('change', function(){
+  bpm = Math.max(60,Math.min(200,+this.value));
+  this.value = bpm;
+});
+
+// ===== MAIN LOOP =====
+let lastScheduleTime = 0;
+function mainLoop(ts){
+  animFrame = requestAnimationFrame(mainLoop);
+
+  // Auto-generate
+  if(autoGenEnabled){
+    const interval = 1000/genSpeed;
+    if(ts - lastGenTime >= interval){
+      lastGenTime = ts;
+      const req = createRequest();
+      addToConveyor(req);
+    }
+  }
+
+  // Run scheduler periodically
+  if(ts - lastScheduleTime > 300){
+    lastScheduleTime = ts;
+    runScheduler();
+  }
+
+  renderConveyor();
+  renderChannels();
+  renderQueue();
+  renderStats();
+}
+
+// ===== START =====
+initChannelsUI();
+initManualPanel();
+setSchedulerState('idle');
+requestAnimationFrame(mainLoop);
+
+// Start audio on first click
+document.addEventListener('click', ()=>initAudio(), {once:true});
+</script>
+</body>
+</html>

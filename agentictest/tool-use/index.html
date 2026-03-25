@@ -1,0 +1,564 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sound Toolkit — Tool Use Pattern</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0a0a12;color:#e0e0e8;font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;overflow-x:hidden}
+  h1{font-size:1.8rem;text-align:center;padding:18px 0 2px;letter-spacing:1px;background:linear-gradient(90deg,#7b5cff,#00d4ff,#ff6bca);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .subtitle{text-align:center;color:#6a6a8a;font-size:.85rem;margin-bottom:18px;font-style:italic}
+  .main{display:flex;gap:18px;padding:0 20px 14px;max-width:1400px;margin:0 auto}
+  /* Agent Panel */
+  .agent-panel{flex:0 0 340px;display:flex;flex-direction:column;gap:14px}
+  .panel-card{background:#12121e;border:1px solid #1e1e30;border-radius:12px;padding:18px}
+  .panel-title{font-size:.8rem;text-transform:uppercase;letter-spacing:2px;color:#5a5a7a;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+  .panel-title .dot{width:8px;height:8px;border-radius:50%;background:#7b5cff;display:inline-block}
+  .agent-input{width:100%;background:#0a0a14;border:1px solid #2a2a3e;border-radius:8px;padding:12px 14px;color:#e0e0e8;font-size:.95rem;outline:none;resize:none;font-family:inherit;transition:border-color .3s}
+  .agent-input:focus{border-color:#7b5cff}
+  .agent-input::placeholder{color:#3a3a55}
+  .compose-btn{width:100%;padding:12px;border:none;border-radius:8px;background:linear-gradient(135deg,#7b5cff,#5c3dcc);color:#fff;font-size:1rem;font-weight:600;cursor:pointer;transition:all .3s;letter-spacing:.5px;position:relative;overflow:hidden}
+  .compose-btn:hover{transform:translateY(-1px);box-shadow:0 4px 20px rgba(123,92,255,.4)}
+  .compose-btn:active{transform:translateY(0)}
+  .compose-btn:disabled{opacity:.6;cursor:not-allowed;transform:none}
+  .compose-btn .spinner{display:none;width:18px;height:18px;border:2px solid rgba(255,255,255,.3);border-top-color:#fff;border-radius:50%;animation:spin .8s linear infinite;margin:0 auto}
+  .compose-btn.loading .label{display:none}
+  .compose-btn.loading .spinner{display:inline-block}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .presets{display:flex;flex-wrap:wrap;gap:8px}
+  .preset-btn{padding:7px 14px;border:1px solid #2a2a3e;border-radius:20px;background:transparent;color:#8a8ab0;font-size:.8rem;cursor:pointer;transition:all .3s}
+  .preset-btn:hover{border-color:#7b5cff;color:#c0c0e0;background:rgba(123,92,255,.1)}
+  /* Thinking */
+  .thinking-area{min-height:60px;display:flex;align-items:center;justify-content:center;color:#6a6a8a;font-size:.85rem}
+  .thinking-dots span{animation:dotPulse 1.4s infinite;opacity:.3;font-size:1.4rem}
+  .thinking-dots span:nth-child(2){animation-delay:.2s}
+  .thinking-dots span:nth-child(3){animation-delay:.4s}
+  @keyframes dotPulse{0%,80%,100%{opacity:.3}40%{opacity:1}}
+  .agent-thought{color:#9a8aff;font-size:.82rem;line-height:1.5;animation:fadeIn .5s}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+  /* Call Log */
+  .call-log{max-height:220px;overflow-y:auto;font-family:'Cascadia Code','Fira Code',monospace;font-size:.75rem;line-height:1.7;scrollbar-width:thin;scrollbar-color:#2a2a3e #0a0a14}
+  .call-log::-webkit-scrollbar{width:5px}
+  .call-log::-webkit-scrollbar-thumb{background:#2a2a3e;border-radius:3px}
+  .log-entry{animation:fadeIn .4s;padding:2px 0;border-bottom:1px solid #1a1a28}
+  .log-time{color:#4a4a6a}
+  .log-fn{color:#00d4ff}
+  .log-args{color:#ffb86c}
+  .log-result{color:#50fa7b}
+  /* Toolkit Panel */
+  .toolkit-panel{flex:1;display:flex;flex-direction:column;gap:14px}
+  .tools-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+  .tool-card{background:#12121e;border:2px solid #1e1e30;border-radius:12px;padding:16px;transition:all .5s;position:relative;overflow:hidden}
+  .tool-card::before{content:'';position:absolute;top:0;left:0;right:0;bottom:0;opacity:0;transition:opacity .5s;pointer-events:none;border-radius:10px}
+  .tool-card.active{transform:scale(1.03)}
+  .tool-card.active::before{opacity:1}
+  .tool-card.dimmed{opacity:.3;filter:grayscale(.5)}
+  .tool-name{font-family:'Cascadia Code','Fira Code',monospace;font-size:.85rem;font-weight:700;margin-bottom:4px}
+  .tool-sig{font-family:'Cascadia Code','Fira Code',monospace;font-size:.7rem;color:#5a5a7a;margin-bottom:8px}
+  .tool-desc{font-size:.75rem;color:#6a6a8a;line-height:1.4}
+  .tool-call-display{margin-top:10px;background:#0a0a14;border-radius:6px;padding:8px 10px;font-family:'Cascadia Code','Fira Code',monospace;font-size:.7rem;color:#ffb86c;display:none;animation:fadeIn .3s;word-break:break-all}
+  .tool-card.active .tool-call-display{display:block}
+  .tool-status{position:absolute;top:10px;right:10px;width:10px;height:10px;border-radius:50%;background:#2a2a3e;transition:all .5s}
+  .tool-card.active .tool-status{background:#50fa7b;box-shadow:0 0 10px #50fa7b}
+  /* Tool Colors */
+  .tool-card[data-tool="synth_pad"]{--tc:#7b5cff}.tool-card[data-tool="synth_pad"].active{border-color:#7b5cff;box-shadow:0 0 25px rgba(123,92,255,.3)}.tool-card[data-tool="synth_pad"]::before{background:radial-gradient(circle at 50% 50%,rgba(123,92,255,.08),transparent)}
+  .tool-card[data-tool="drum_pattern"]{--tc:#ff6b6b}.tool-card[data-tool="drum_pattern"].active{border-color:#ff6b6b;box-shadow:0 0 25px rgba(255,107,107,.3)}.tool-card[data-tool="drum_pattern"]::before{background:radial-gradient(circle at 50% 50%,rgba(255,107,107,.08),transparent)}
+  .tool-card[data-tool="bass_line"]{--tc:#00d4ff}.tool-card[data-tool="bass_line"].active{border-color:#00d4ff;box-shadow:0 0 25px rgba(0,212,255,.3)}.tool-card[data-tool="bass_line"]::before{background:radial-gradient(circle at 50% 50%,rgba(0,212,255,.08),transparent)}
+  .tool-card[data-tool="arpeggio"]{--tc:#ffb86c}.tool-card[data-tool="arpeggio"].active{border-color:#ffb86c;box-shadow:0 0 25px rgba(255,184,108,.3)}.tool-card[data-tool="arpeggio"]::before{background:radial-gradient(circle at 50% 50%,rgba(255,184,108,.08),transparent)}
+  .tool-card[data-tool="fx_reverb"]{--tc:#ff6bca}.tool-card[data-tool="fx_reverb"].active{border-color:#ff6bca;box-shadow:0 0 25px rgba(255,107,202,.3)}.tool-card[data-tool="fx_reverb"]::before{background:radial-gradient(circle at 50% 50%,rgba(255,107,202,.08),transparent)}
+  .tool-card[data-tool="fx_filter"]{--tc:#50fa7b}.tool-card[data-tool="fx_filter"].active{border-color:#50fa7b;box-shadow:0 0 25px rgba(80,250,123,.3)}.tool-card[data-tool="fx_filter"]::before{background:radial-gradient(circle at 50% 50%,rgba(80,250,123,.08),transparent)}
+  @keyframes pulse{0%,100%{box-shadow:0 0 15px var(--tc,#7b5cff)}50%{box-shadow:0 0 35px var(--tc,#7b5cff)}}
+  .tool-card.active{animation:pulse 2s ease-in-out infinite}
+  /* Visualizer */
+  .viz-section{padding:0 20px 20px;max-width:1400px;margin:0 auto}
+  .viz-card{background:#12121e;border:1px solid #1e1e30;border-radius:12px;padding:14px;position:relative}
+  canvas{width:100%;height:120px;display:block;border-radius:8px}
+  .stop-btn{position:absolute;top:14px;right:14px;padding:6px 16px;border:1px solid #ff6b6b;border-radius:6px;background:transparent;color:#ff6b6b;font-size:.75rem;cursor:pointer;transition:all .3s;display:none}
+  .stop-btn.visible{display:block}
+  .stop-btn:hover{background:rgba(255,107,107,.15)}
+</style>
+</head>
+<body>
+<h1>Sound Toolkit</h1>
+<p class="subtitle">Tool Use Pattern &mdash; the agent selects and invokes tools to accomplish its goal</p>
+
+<div class="main">
+  <!-- Agent Panel -->
+  <div class="agent-panel">
+    <div class="panel-card">
+      <div class="panel-title"><span class="dot"></span>Agent Input</div>
+      <textarea class="agent-input" id="moodInput" rows="3" placeholder="Describe a mood or soundscape...&#10;e.g. &quot;dark and mysterious&quot;"></textarea>
+      <div style="height:10px"></div>
+      <button class="compose-btn" id="composeBtn" onclick="compose()">
+        <span class="label">Compose</span>
+        <span class="spinner"></span>
+      </button>
+      <div style="height:10px"></div>
+      <div class="presets">
+        <button class="preset-btn" onclick="setPreset('Mysterious and dark, eerie atmosphere')">Mysterious</button>
+        <button class="preset-btn" onclick="setPreset('Energetic and upbeat, driving rhythm')">Energetic</button>
+        <button class="preset-btn" onclick="setPreset('Peaceful and calm, gentle ambient')">Peaceful</button>
+        <button class="preset-btn" onclick="setPreset('Dramatic and epic, cinematic tension')">Dramatic</button>
+      </div>
+    </div>
+    <div class="panel-card">
+      <div class="panel-title"><span class="dot"></span>Agent Reasoning</div>
+      <div class="thinking-area" id="thinkingArea">
+        <span style="color:#4a4a6a">Awaiting input...</span>
+      </div>
+    </div>
+    <div class="panel-card">
+      <div class="panel-title"><span class="dot"></span>Call Log</div>
+      <div class="call-log" id="callLog">
+        <div style="color:#4a4a6a;font-family:inherit;font-size:.8rem">No tool calls yet.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toolkit Panel -->
+  <div class="toolkit-panel">
+    <div class="panel-title" style="padding:0 4px"><span class="dot" style="background:#00d4ff"></span>Available Tools (6)</div>
+    <div class="tools-grid">
+      <div class="tool-card" data-tool="synth_pad" id="tool_synth_pad">
+        <div class="tool-status"></div>
+        <div class="tool-name" style="color:#7b5cff">synth_pad</div>
+        <div class="tool-sig">(note, duration)</div>
+        <div class="tool-desc">Sustained pad sound with smooth attack and release envelope</div>
+        <div class="tool-call-display" id="call_synth_pad"></div>
+      </div>
+      <div class="tool-card" data-tool="drum_pattern" id="tool_drum_pattern">
+        <div class="tool-status"></div>
+        <div class="tool-name" style="color:#ff6b6b">drum_pattern</div>
+        <div class="tool-sig">(style)</div>
+        <div class="tool-desc">Generates kick, snare, and hi-hat rhythmic patterns</div>
+        <div class="tool-call-display" id="call_drum_pattern"></div>
+      </div>
+      <div class="tool-card" data-tool="bass_line" id="tool_bass_line">
+        <div class="tool-status"></div>
+        <div class="tool-name" style="color:#00d4ff">bass_line</div>
+        <div class="tool-sig">(root, pattern)</div>
+        <div class="tool-desc">Bass frequency sequence with sub-oscillator warmth</div>
+        <div class="tool-call-display" id="call_bass_line"></div>
+      </div>
+      <div class="tool-card" data-tool="arpeggio" id="tool_arpeggio">
+        <div class="tool-status"></div>
+        <div class="tool-name" style="color:#ffb86c">arpeggio</div>
+        <div class="tool-sig">(chord, speed)</div>
+        <div class="tool-desc">Arpeggiated chord notes cycling in sequence</div>
+        <div class="tool-call-display" id="call_arpeggio"></div>
+      </div>
+      <div class="tool-card" data-tool="fx_reverb" id="tool_fx_reverb">
+        <div class="tool-status"></div>
+        <div class="tool-name" style="color:#ff6bca">fx_reverb</div>
+        <div class="tool-sig">(amount)</div>
+        <div class="tool-desc">Convolution reverb adding spatial depth and atmosphere</div>
+        <div class="tool-call-display" id="call_fx_reverb"></div>
+      </div>
+      <div class="tool-card" data-tool="fx_filter" id="tool_fx_filter">
+        <div class="tool-status"></div>
+        <div class="tool-name" style="color:#50fa7b">fx_filter</div>
+        <div class="tool-sig">(type, freq)</div>
+        <div class="tool-desc">Filter sweep shaping the frequency spectrum dynamically</div>
+        <div class="tool-call-display" id="call_fx_filter"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="viz-section">
+  <div class="viz-card">
+    <div class="panel-title" style="margin-bottom:8px"><span class="dot" style="background:#50fa7b"></span>Audio Output Visualization</div>
+    <button class="stop-btn" id="stopBtn" onclick="stopAll()">Stop All</button>
+    <canvas id="vizCanvas"></canvas>
+  </div>
+</div>
+
+<script>
+// ====================== AUDIO ENGINE ======================
+let audioCtx=null, masterGain=null, analyser=null, convolver=null, filterNode=null;
+let activeNodes=[], drumInterval=null, arpInterval=null, vizFrame=null;
+const NOTE_FREQ={
+  'C2':65.41,'D2':73.42,'E2':82.41,'F2':87.31,'G2':98,'A2':110,'B2':123.47,
+  'C3':130.81,'D3':146.83,'E3':164.81,'F3':174.61,'G3':196,'A3':220,'Bb3':233.08,'B3':246.94,
+  'C4':261.63,'D4':293.66,'E4':329.63,'F4':349.23,'G4':392,'A4':440,'B4':493.88,
+  'C5':523.25,'D5':587.33,'E5':659.25,'F5':698.46,'G5':783.99
+};
+
+function initAudio(){
+  if(audioCtx)return;
+  audioCtx=new(window.AudioContext||window.webkitAudioContext)();
+  masterGain=audioCtx.createGain();
+  masterGain.gain.value=0.5;
+  analyser=audioCtx.createAnalyser();
+  analyser.fftSize=2048;
+  // reverb node
+  convolver=audioCtx.createConvolver();
+  const rate=audioCtx.sampleRate,len=rate*2.5,buf=audioCtx.createBuffer(2,len,rate);
+  for(let ch=0;ch<2;ch++){const d=buf.getChannelData(ch);for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2.5)}
+  convolver.buffer=buf;
+  // filter node
+  filterNode=audioCtx.createBiquadFilter();
+  filterNode.type='lowpass';
+  filterNode.frequency.value=20000;
+  filterNode.Q.value=1;
+  // chain: source -> filterNode -> convolver(wet)+dry -> masterGain -> analyser -> dest
+  filterNode.connect(masterGain);
+  masterGain.connect(analyser);
+  analyser.connect(audioCtx.destination);
+  startViz();
+}
+
+// ====================== TOOL IMPLEMENTATIONS ======================
+function toolSynthPad(note,duration){
+  initAudio();
+  const freq=NOTE_FREQ[note]||130.81;
+  const osc=audioCtx.createOscillator();
+  const osc2=audioCtx.createOscillator();
+  const g=audioCtx.createGain();
+  osc.type='sine';osc.frequency.value=freq;
+  osc2.type='triangle';osc2.frequency.value=freq*1.002;
+  osc.connect(g);osc2.connect(g);
+  g.connect(filterNode);
+  g.gain.setValueAtTime(0,audioCtx.currentTime);
+  g.gain.linearRampToValueAtTime(0.18,audioCtx.currentTime+0.8);
+  g.gain.linearRampToValueAtTime(0.12,audioCtx.currentTime+duration-1);
+  g.gain.linearRampToValueAtTime(0,audioCtx.currentTime+duration);
+  osc.start();osc2.start();
+  osc.stop(audioCtx.currentTime+duration+0.1);
+  osc2.stop(audioCtx.currentTime+duration+0.1);
+  activeNodes.push(osc,osc2);
+}
+
+function toolDrumPattern(style){
+  initAudio();
+  if(drumInterval)clearInterval(drumInterval);
+  const bpm=style==='slow'?80:style==='fast'?140:110;
+  const step=60/bpm/2;
+  let count=0;const total=Math.floor(8/step);
+  function hit(){
+    if(count>=total)return void clearInterval(drumInterval);
+    const t=audioCtx.currentTime;
+    // kick on beats 0,4
+    if(count%8===0||count%8===4){
+      const o=audioCtx.createOscillator(),g=audioCtx.createGain();
+      o.type='sine';o.frequency.setValueAtTime(150,t);o.frequency.exponentialRampToValueAtTime(40,t+0.12);
+      g.gain.setValueAtTime(0.6,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.25);
+      o.connect(g);g.connect(filterNode);o.start(t);o.stop(t+0.3);activeNodes.push(o);
+    }
+    // snare on beats 2,6
+    if(count%8===2||count%8===6){
+      const bufSize=audioCtx.sampleRate*0.1,buf=audioCtx.createBuffer(1,bufSize,audioCtx.sampleRate);
+      const d=buf.getChannelData(0);for(let i=0;i<bufSize;i++)d[i]=Math.random()*2-1;
+      const n=audioCtx.createBufferSource(),g=audioCtx.createGain();
+      n.buffer=buf;g.gain.setValueAtTime(0.3,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.12);
+      n.connect(g);g.connect(filterNode);n.start(t);n.stop(t+0.15);activeNodes.push(n);
+    }
+    // hat on every other
+    if(count%2===0){
+      const bufSize=audioCtx.sampleRate*0.03,buf=audioCtx.createBuffer(1,bufSize,audioCtx.sampleRate);
+      const d=buf.getChannelData(0);for(let i=0;i<bufSize;i++)d[i]=Math.random()*2-1;
+      const n=audioCtx.createBufferSource(),g=audioCtx.createGain(),f=audioCtx.createBiquadFilter();
+      n.buffer=buf;f.type='highpass';f.frequency.value=7000;
+      g.gain.setValueAtTime(0.12,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.05);
+      n.connect(f);f.connect(g);g.connect(filterNode);n.start(t);n.stop(t+0.06);activeNodes.push(n);
+    }
+    count++;
+  }
+  hit();drumInterval=setInterval(hit,step*1000);
+}
+
+function toolBassLine(root,pattern){
+  initAudio();
+  const rootFreq=NOTE_FREQ[root]||65.41;
+  const patterns={
+    'walking':[1,1.25,1.5,1.25],
+    'pulse':[1,1,1,1],
+    'octave':[1,2,1,2],
+    'fifths':[1,1.5,1,1.5]
+  };
+  const seq=patterns[pattern]||patterns['pulse'];
+  let i=0;const stepTime=0.35;
+  function playStep(){
+    if(i>=16)return;
+    const t=audioCtx.currentTime;
+    const osc=audioCtx.createOscillator(),g=audioCtx.createGain();
+    osc.type='sawtooth';osc.frequency.value=rootFreq*seq[i%seq.length];
+    g.gain.setValueAtTime(0.2,t);g.gain.exponentialRampToValueAtTime(0.001,t+stepTime*0.8);
+    osc.connect(g);g.connect(filterNode);
+    osc.start(t);osc.stop(t+stepTime);activeNodes.push(osc);
+    i++;
+    setTimeout(playStep,stepTime*1000);
+  }
+  playStep();
+}
+
+function toolArpeggio(chord,speed){
+  initAudio();
+  if(arpInterval)clearInterval(arpInterval);
+  const chords={
+    'Cm':['C4','Eb4','G4','C5'],'Am':['A3','C4','E4','A4'],
+    'C':['C4','E4','G4','C5'],'G':['G3','B3','D4','G4'],
+    'Dm':['D4','F4','A4','D5'],'Em':['E4','G4','B4','E5'],
+    'F':['F3','A3','C4','F4'],'Fm':['F3','Ab3','C4','F4']
+  };
+  // Map Eb4->E4 etc for simple lookup
+  const freqLookup=k=>{const m={'Eb4':311.13,'Ab3':207.65,'Bb3':233.08};return m[k]||NOTE_FREQ[k]||261.63};
+  const notes=chords[chord]||chords['Cm'];
+  const interval=speed==='fast'?100:speed==='slow'?300:180;
+  let idx=0,total=24;
+  arpInterval=setInterval(()=>{
+    if(idx>=total)return void clearInterval(arpInterval);
+    const t=audioCtx.currentTime;
+    const osc=audioCtx.createOscillator(),g=audioCtx.createGain();
+    osc.type='triangle';osc.frequency.value=freqLookup(notes[idx%notes.length]);
+    g.gain.setValueAtTime(0.12,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+    osc.connect(g);g.connect(filterNode);
+    osc.start(t);osc.stop(t+0.35);activeNodes.push(osc);
+    idx++;
+  },interval);
+}
+
+function toolFxReverb(amount){
+  initAudio();
+  // Re-route through convolver based on amount
+  const wet=audioCtx.createGain();
+  wet.gain.value=Math.min(amount,1);
+  // Disconnect masterGain from analyser, insert convolver
+  try{masterGain.disconnect(analyser)}catch(e){}
+  masterGain.connect(convolver);
+  convolver.connect(wet);
+  wet.connect(analyser);
+  // Also keep dry path
+  const dry=audioCtx.createGain();
+  dry.gain.value=1-amount*0.5;
+  masterGain.connect(dry);
+  dry.connect(analyser);
+  analyser.connect(audioCtx.destination);
+}
+
+function toolFxFilter(type,freq){
+  initAudio();
+  filterNode.type=type==='highpass'?'highpass':'lowpass';
+  filterNode.frequency.setValueAtTime(filterNode.frequency.value,audioCtx.currentTime);
+  filterNode.frequency.linearRampToValueAtTime(freq,audioCtx.currentTime+2);
+  filterNode.Q.value=3;
+}
+
+// ====================== MOOD -> TOOL MAPPING ======================
+const MOOD_MAP=[
+  {keywords:['mysterious','dark','eerie','haunting','creepy','spooky','ominous'],tools:[
+    {fn:'synth_pad',args:{note:'C3',duration:6}},
+    {fn:'fx_reverb',args:{amount:0.8}},
+    {fn:'fx_filter',args:{type:'lowpass',freq:800}},
+    {fn:'arpeggio',args:{chord:'Cm',speed:'slow'}}
+  ]},
+  {keywords:['energetic','upbeat','driving','fast','dance','electronic','techno','rave'],tools:[
+    {fn:'drum_pattern',args:{style:'fast'}},
+    {fn:'bass_line',args:{root:'E2',pattern:'octave'}},
+    {fn:'arpeggio',args:{chord:'Em',speed:'fast'}},
+    {fn:'fx_filter',args:{type:'highpass',freq:400}}
+  ]},
+  {keywords:['peaceful','calm','gentle','ambient','serene','soft','quiet','relaxing','chill'],tools:[
+    {fn:'synth_pad',args:{note:'G3',duration:8}},
+    {fn:'arpeggio',args:{chord:'C',speed:'slow'}},
+    {fn:'fx_reverb',args:{amount:0.9}}
+  ]},
+  {keywords:['dramatic','epic','cinematic','tension','intense','powerful','grand'],tools:[
+    {fn:'synth_pad',args:{note:'D3',duration:6}},
+    {fn:'drum_pattern',args:{style:'slow'}},
+    {fn:'bass_line',args:{root:'D2',pattern:'fifths'}},
+    {fn:'fx_reverb',args:{amount:0.7}}
+  ]},
+  {keywords:['happy','bouncy','cheerful','joyful','fun','playful','bright'],tools:[
+    {fn:'arpeggio',args:{chord:'C',speed:'fast'}},
+    {fn:'drum_pattern',args:{style:'medium'}},
+    {fn:'bass_line',args:{root:'C2',pattern:'walking'}},
+    {fn:'fx_filter',args:{type:'highpass',freq:300}}
+  ]},
+  {keywords:['sad','melancholy','somber','lonely','mournful','blue'],tools:[
+    {fn:'synth_pad',args:{note:'A3',duration:8}},
+    {fn:'arpeggio',args:{chord:'Am',speed:'slow'}},
+    {fn:'fx_reverb',args:{amount:0.85}},
+    {fn:'fx_filter',args:{type:'lowpass',freq:1200}}
+  ]},
+  {keywords:['aggressive','heavy','hard','metal','rock','distorted'],tools:[
+    {fn:'drum_pattern',args:{style:'fast'}},
+    {fn:'bass_line',args:{root:'E2',pattern:'pulse'}},
+    {fn:'synth_pad',args:{note:'E3',duration:5}},
+    {fn:'fx_filter',args:{type:'highpass',freq:600}}
+  ]}
+];
+
+function matchMood(text){
+  const lower=text.toLowerCase();
+  let bestMatch=null,bestScore=0;
+  for(const m of MOOD_MAP){
+    let score=0;
+    for(const kw of m.keywords)if(lower.includes(kw))score++;
+    if(score>bestScore){bestScore=score;bestMatch=m}
+  }
+  // If no match, return a default mix
+  if(!bestMatch)bestMatch={tools:[
+    {fn:'synth_pad',args:{note:'C3',duration:6}},
+    {fn:'drum_pattern',args:{style:'medium'}},
+    {fn:'fx_reverb',args:{amount:0.5}}
+  ]};
+  return bestMatch.tools;
+}
+
+// ====================== UI LOGIC ======================
+let composing=false;
+function setPreset(text){document.getElementById('moodInput').value=text}
+
+function stopAll(){
+  activeNodes.forEach(n=>{try{n.stop()}catch(e){}});
+  activeNodes=[];
+  if(drumInterval){clearInterval(drumInterval);drumInterval=null}
+  if(arpInterval){clearInterval(arpInterval);arpInterval=null}
+  if(audioCtx){
+    // Reset filter
+    filterNode.type='lowpass';filterNode.frequency.value=20000;filterNode.Q.value=1;
+    // Reset routing
+    try{masterGain.disconnect()}catch(e){}
+    try{convolver.disconnect()}catch(e){}
+    masterGain.connect(analyser);
+    analyser.connect(audioCtx.destination);
+  }
+  document.getElementById('stopBtn').classList.remove('visible');
+  document.querySelectorAll('.tool-card').forEach(c=>{c.classList.remove('active','dimmed');c.querySelector('.tool-call-display').style.display='none'});
+}
+
+async function compose(){
+  if(composing)return;
+  const text=document.getElementById('moodInput').value.trim();
+  if(!text)return;
+  composing=true;
+  stopAll();
+  initAudio();
+  if(audioCtx.state==='suspended')audioCtx.resume();
+  const btn=document.getElementById('composeBtn');
+  btn.classList.add('loading');btn.disabled=true;
+  const thinkArea=document.getElementById('thinkingArea');
+  const logArea=document.getElementById('callLog');
+  logArea.innerHTML='';
+
+  // Reset all tool cards
+  document.querySelectorAll('.tool-card').forEach(c=>{c.classList.remove('active','dimmed');c.querySelector('.tool-call-display').style.display='none'});
+
+  // Phase 1: Thinking
+  thinkArea.innerHTML='<div class="thinking-dots">Analyzing mood<span>.</span><span>.</span><span>.</span></div>';
+  await delay(1200);
+
+  const selectedTools=matchMood(text);
+  const toolNames=selectedTools.map(t=>t.fn);
+
+  // Phase 2: Show reasoning
+  thinkArea.innerHTML=`<div class="agent-thought">Detected mood: "${text}"<br>Selected ${selectedTools.length} tools: ${toolNames.map(n=>`<b>${n}</b>`).join(', ')}<br>Executing tool chain...</div>`;
+
+  // Dim unselected tools
+  document.querySelectorAll('.tool-card').forEach(c=>{
+    if(!toolNames.includes(c.dataset.tool))c.classList.add('dimmed');
+  });
+
+  await delay(600);
+
+  // Phase 3: Execute tools sequentially
+  document.getElementById('stopBtn').classList.add('visible');
+  for(let i=0;i<selectedTools.length;i++){
+    const tool=selectedTools[i];
+    const card=document.getElementById('tool_'+tool.fn);
+    const callDisp=document.getElementById('call_'+tool.fn);
+
+    // Activate card
+    card.classList.add('active');
+    const argsStr=JSON.stringify(tool.args);
+    callDisp.textContent=`${tool.fn}(${argsStr})`;
+    callDisp.style.display='block';
+
+    // Log entry
+    const now=new Date();
+    const ts=now.toLocaleTimeString('en',{hour12:false});
+    const entry=document.createElement('div');
+    entry.className='log-entry';
+    entry.innerHTML=`<span class="log-time">[${ts}]</span> <span class="log-fn">agent.call</span>(<span class="log-fn">${tool.fn}</span>, <span class="log-args">${argsStr}</span>) <span class="log-result">-> OK</span>`;
+    logArea.appendChild(entry);
+    logArea.scrollTop=logArea.scrollHeight;
+
+    // Execute the actual audio tool
+    switch(tool.fn){
+      case 'synth_pad':toolSynthPad(tool.args.note,tool.args.duration);break;
+      case 'drum_pattern':toolDrumPattern(tool.args.style);break;
+      case 'bass_line':toolBassLine(tool.args.root,tool.args.pattern);break;
+      case 'arpeggio':toolArpeggio(tool.args.chord,tool.args.speed);break;
+      case 'fx_reverb':toolFxReverb(tool.args.amount);break;
+      case 'fx_filter':toolFxFilter(tool.args.type,tool.args.freq);break;
+    }
+
+    await delay(700);
+  }
+
+  // Done
+  const nowF=new Date().toLocaleTimeString('en',{hour12:false});
+  const doneEntry=document.createElement('div');
+  doneEntry.className='log-entry';
+  doneEntry.innerHTML=`<span class="log-time">[${nowF}]</span> <span class="log-result">-- Composition complete (${selectedTools.length} tools invoked) --</span>`;
+  logArea.appendChild(doneEntry);
+  logArea.scrollTop=logArea.scrollHeight;
+
+  thinkArea.innerHTML=`<div class="agent-thought">Composition complete. ${selectedTools.length} tools invoked for "${text}".</div>`;
+  btn.classList.remove('loading');btn.disabled=false;
+  composing=false;
+}
+
+function delay(ms){return new Promise(r=>setTimeout(r,ms))}
+
+// ====================== VISUALIZER ======================
+function startViz(){
+  const canvas=document.getElementById('vizCanvas');
+  const ctx=canvas.getContext('2d');
+  function resize(){canvas.width=canvas.clientWidth*window.devicePixelRatio;canvas.height=canvas.clientHeight*window.devicePixelRatio;ctx.scale(window.devicePixelRatio,window.devicePixelRatio)}
+  resize();window.addEventListener('resize',resize);
+
+  const bufLen=analyser.frequencyBinCount;
+  const dataArray=new Uint8Array(bufLen);
+  const freqArray=new Uint8Array(bufLen);
+
+  function draw(){
+    vizFrame=requestAnimationFrame(draw);
+    const w=canvas.clientWidth,h=canvas.clientHeight;
+    ctx.clearRect(0,0,w,h);
+
+    // Frequency bars
+    analyser.getByteFrequencyData(freqArray);
+    const barCount=80;
+    const barW=w/barCount;
+    for(let i=0;i<barCount;i++){
+      const val=freqArray[Math.floor(i*bufLen/barCount/2)]/255;
+      const barH=val*h*0.7;
+      const hue=220+i*2;
+      ctx.fillStyle=`hsla(${hue},80%,60%,${0.3+val*0.5})`;
+      ctx.fillRect(i*barW,h-barH,barW-1,barH);
+    }
+
+    // Waveform
+    analyser.getByteTimeDomainData(dataArray);
+    ctx.lineWidth=1.5;
+    ctx.strokeStyle='rgba(123,92,255,0.7)';
+    ctx.beginPath();
+    const sliceW=w/bufLen;
+    for(let i=0;i<bufLen;i++){
+      const v=dataArray[i]/128.0;
+      const y=v*h/2;
+      if(i===0)ctx.moveTo(0,y);else ctx.lineTo(i*sliceW,y);
+    }
+    ctx.stroke();
+  }
+  draw();
+}
+
+// Enter key
+document.getElementById('moodInput').addEventListener('keydown',e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();compose()}});
+</script>
+</body>
+</html>

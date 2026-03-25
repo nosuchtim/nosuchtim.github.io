@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Song Architect — Planning Pattern</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:#0a0a12;color:#e0e0f0;font-family:'Segoe UI',system-ui,sans-serif;min-height:100vh;overflow-x:hidden}
+
+  /* Header */
+  header{text-align:center;padding:32px 20px 12px}
+  h1{font-size:2.4rem;background:linear-gradient(135deg,#7b5ea7,#4fc3f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent;letter-spacing:1px}
+  .subtitle{color:#8888aa;font-size:.95rem;margin-top:6px;font-style:italic}
+
+  /* Controls */
+  .controls{display:flex;flex-wrap:wrap;justify-content:center;align-items:center;gap:16px;padding:20px;max-width:900px;margin:0 auto}
+  .ctrl-group{display:flex;flex-direction:column;gap:4px}
+  .ctrl-group label{font-size:.75rem;text-transform:uppercase;letter-spacing:1px;color:#7b7b9a}
+  select,input[type=range]{background:#16162a;color:#c8c8e0;border:1px solid #2a2a4a;border-radius:8px;padding:8px 14px;font-size:.95rem;cursor:pointer;outline:none;min-width:140px}
+  select:focus,input[type=range]:focus{border-color:#7b5ea7}
+  input[type=range]{-webkit-appearance:none;height:6px;padding:0;border-radius:3px;background:linear-gradient(90deg,#4a3f6b,#4fc3f7)}
+  input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:18px;height:18px;border-radius:50%;background:#7b5ea7;border:2px solid #4fc3f7;cursor:pointer}
+  .bpm-val{text-align:center;font-size:.85rem;color:#4fc3f7;font-weight:600}
+
+  .btn{background:linear-gradient(135deg,#7b5ea7,#4a7fc7);color:#fff;border:none;border-radius:12px;padding:14px 36px;font-size:1.05rem;font-weight:600;cursor:pointer;letter-spacing:.5px;transition:all .25s;text-transform:uppercase}
+  .btn:hover{transform:translateY(-2px);box-shadow:0 6px 24px rgba(123,94,167,.5)}
+  .btn:disabled{opacity:.4;cursor:not-allowed;transform:none;box-shadow:none}
+  .btn-secondary{background:linear-gradient(135deg,#3a3a5a,#4a4a6a);padding:10px 24px;font-size:.85rem}
+
+  /* Status */
+  .status-bar{text-align:center;padding:8px;min-height:36px}
+  .status-text{font-size:.9rem;color:#7b5ea7;letter-spacing:1px}
+  .status-text.executing{color:#4fc3f7}
+  .status-text.done{color:#4caf50}
+
+  /* Plan Timeline */
+  .plan-container{max-width:1100px;margin:0 auto;padding:20px;position:relative;min-height:200px}
+  .timeline{display:flex;align-items:center;justify-content:center;gap:0;position:relative;padding:20px 0}
+  .timeline-connector{width:40px;height:3px;background:#2a2a4a;position:relative;flex-shrink:0;transition:background .5s}
+  .timeline-connector.active{background:linear-gradient(90deg,#7b5ea7,#4fc3f7);box-shadow:0 0 8px rgba(79,195,247,.3)}
+  .timeline-connector.completed{background:#4caf50}
+
+  .section-node{background:linear-gradient(135deg,#1a1a35,#22224a);border:2px solid #2a2a5a;border-radius:16px;padding:16px 20px;min-width:140px;text-align:center;transition:all .5s;position:relative;opacity:0;transform:translateY(20px);flex-shrink:0}
+  .section-node.visible{opacity:1;transform:translateY(0)}
+  .section-node.active{border-color:#4fc3f7;background:linear-gradient(135deg,#1a1a45,#2a2a6a);transform:scale(1.12);box-shadow:0 0 30px rgba(79,195,247,.35),0 0 60px rgba(123,94,167,.2);z-index:2}
+  .section-node.completed{border-color:#4caf50;background:linear-gradient(135deg,#1a2a1a,#1a351a)}
+  .section-node.completed .check{display:block}
+  .section-name{font-weight:700;font-size:1rem;margin-bottom:4px;letter-spacing:1px}
+  .section-bars{font-size:.75rem;color:#7b7b9a}
+  .section-instruments{font-size:.72rem;color:#9b8bc0;margin-top:6px;line-height:1.4;min-height:28px}
+  .check{display:none;position:absolute;top:-8px;right:-8px;width:24px;height:24px;background:#4caf50;border-radius:50%;line-height:24px;font-size:14px;color:#fff;font-weight:700}
+
+  /* Canvas */
+  .viz-container{max-width:1100px;margin:10px auto;padding:0 20px}
+  canvas{width:100%;height:100px;border-radius:12px;background:#0e0e1a;display:block}
+
+  /* Section detail */
+  .section-detail{text-align:center;min-height:50px;padding:10px 20px}
+  .section-detail h3{color:#4fc3f7;font-size:1.1rem;margin-bottom:4px}
+  .section-detail p{color:#8888aa;font-size:.85rem}
+
+  /* Progress bar across timeline */
+  .progress-track{max-width:1100px;margin:0 auto;padding:0 20px}
+  .progress-bar-bg{height:4px;background:#16162a;border-radius:2px;overflow:hidden;margin-top:4px}
+  .progress-bar-fill{height:100%;width:0;background:linear-gradient(90deg,#7b5ea7,#4fc3f7);border-radius:2px;transition:width .3s linear}
+
+  /* Animations */
+  @keyframes pulse{0%,100%{opacity:.6}50%{opacity:1}}
+  .planning-anim{animation:pulse 1s infinite}
+  @keyframes fadeSlideIn{from{opacity:0;transform:translateY(15px)}to{opacity:1;transform:translateY(0)}}
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Song Architect</h1>
+  <p class="subtitle">Planning Pattern &mdash; decompose a complex goal into steps, then execute</p>
+</header>
+
+<div class="controls">
+  <div class="ctrl-group">
+    <label>Genre</label>
+    <select id="genre">
+      <option value="electronic">Electronic</option>
+      <option value="jazz">Jazz</option>
+      <option value="ambient">Ambient</option>
+      <option value="rock">Rock</option>
+    </select>
+  </div>
+  <div class="ctrl-group">
+    <label>Mood</label>
+    <select id="mood">
+      <option value="dark">Dark</option>
+      <option value="bright">Bright</option>
+      <option value="mellow">Mellow</option>
+      <option value="intense">Intense</option>
+    </select>
+  </div>
+  <div class="ctrl-group">
+    <label>BPM</label>
+    <input type="range" id="bpm" min="60" max="160" value="120">
+    <div class="bpm-val" id="bpmVal">120 BPM</div>
+  </div>
+  <button class="btn" id="planBtn">Plan &amp; Execute</button>
+  <button class="btn btn-secondary" id="replanBtn" style="display:none">Re-plan</button>
+  <button class="btn btn-secondary" id="stopBtn" style="display:none">Stop</button>
+</div>
+
+<div class="status-bar"><span class="status-text" id="status"></span></div>
+
+<div class="plan-container" id="planContainer">
+  <div class="timeline" id="timeline"></div>
+</div>
+
+<div class="progress-track">
+  <div class="progress-bar-bg"><div class="progress-bar-fill" id="progressFill"></div></div>
+</div>
+
+<div class="viz-container">
+  <canvas id="vizCanvas"></canvas>
+</div>
+
+<div class="section-detail" id="sectionDetail"></div>
+
+<script>
+// ─── DOM refs ───
+const genreEl=document.getElementById('genre'),moodEl=document.getElementById('mood'),bpmEl=document.getElementById('bpm'),bpmVal=document.getElementById('bpmVal');
+const planBtn=document.getElementById('planBtn'),replanBtn=document.getElementById('replanBtn'),stopBtn=document.getElementById('stopBtn');
+const statusEl=document.getElementById('status'),timelineEl=document.getElementById('timeline'),progressFill=document.getElementById('progressFill');
+const vizCanvas=document.getElementById('vizCanvas'),vizCtx=vizCanvas.getContext('2d'),detailEl=document.getElementById('sectionDetail');
+
+bpmEl.oninput=()=>bpmVal.textContent=bpmEl.value+' BPM';
+
+// ─── Genre instrument maps ───
+const GENRE_INSTRUMENTS={
+  electronic:{intro:['Synth Pad','Filter Sweep'],verse:['Kick','Hi-Hat','Bass Synth','Lead Arp'],chorus:['Full Kit','Sub Bass','Lead Synth','Chord Stabs','FX'],bridge:['Pad','Arpeggiated Synth'],outro:['Pad','Reverb Tail']},
+  jazz:{intro:['Piano Chords','Brushed Ride'],verse:['Walking Bass','Piano Comp','Ride Cymbal'],chorus:['Bass','Piano Solo','Drums Full','Horn Stabs'],bridge:['Piano Solo','Light Bass'],outro:['Piano Chords','Fade Drums']},
+  ambient:{intro:['Drone Pad','Shimmer Reverb'],verse:['Evolving Pad','Sub Tone','Grain Texture'],chorus:['Layered Pads','Bell Tones','Deep Bass','Sparkle'],bridge:['Solo Pad','Filtered Noise'],outro:['Fading Drone','Silence']},
+  rock:{intro:['Clean Guitar','Kick Count-in'],verse:['Rhythm Guitar','Bass','Drums','Hi-Hat'],chorus:['Power Chords','Bass','Full Drums','Lead Guitar','Crash'],bridge:['Arpeggio Guitar','Toms'],outro:['Power Chord Ring','Cymbal Wash']}
+};
+
+const SECTION_DEFS=[
+  {name:'INTRO',bars:4,desc:'Sparse, building atmosphere'},
+  {name:'VERSE',bars:4,desc:'Add rhythm and bass foundation'},
+  {name:'CHORUS',bars:4,desc:'Full arrangement, peak energy'},
+  {name:'BRIDGE',bars:2,desc:'Stripped back, shift perspective'},
+  {name:'OUTRO',bars:2,desc:'Fade and resolve'}
+];
+
+// ─── Mood → musical parameters ───
+function moodParams(mood){
+  const m={dark:{baseNote:40,scale:[0,2,3,5,7,8,10],filterBase:400,gain:.7},bright:{baseNote:52,scale:[0,2,4,5,7,9,11],filterBase:2000,gain:.85},mellow:{baseNote:48,scale:[0,2,4,7,9],filterBase:800,gain:.55},intense:{baseNote:36,scale:[0,1,3,5,7,8,10],filterBase:1200,gain:.95}};
+  return m[mood]||m.dark;
+}
+
+// ─── Audio Engine ───
+let audioCtx=null,masterGain=null,analyser=null,currentNodes=[],isPlaying=false,animFrame=null,stopRequested=false;
+
+function initAudio(){
+  if(!audioCtx){audioCtx=new(window.AudioContext||window.webkitAudioContext)();masterGain=audioCtx.createGain();masterGain.gain.value=0.5;analyser=audioCtx.createAnalyser();analyser.fftSize=2048;masterGain.connect(analyser);analyser.connect(audioCtx.destination)}
+  if(audioCtx.state==='suspended')audioCtx.resume();
+}
+
+function midiToFreq(n){return 440*Math.pow(2,(n-69)/12)}
+
+function stopAllNodes(){currentNodes.forEach(n=>{try{n.stop?n.stop():n.disconnect()}catch(e){}});currentNodes=[];}
+
+function createOsc(type,freq,gain,filterFreq,pan=0){
+  const o=audioCtx.createOscillator();o.type=type;o.frequency.value=freq;
+  const g=audioCtx.createGain();g.gain.value=gain;
+  const f=audioCtx.createBiquadFilter();f.type='lowpass';f.frequency.value=filterFreq;f.Q.value=1;
+  const p=audioCtx.createStereoPanner();p.pan.value=pan;
+  o.connect(f);f.connect(g);g.connect(p);p.connect(masterGain);
+  o.start();currentNodes.push(o);
+  return{osc:o,gain:g,filter:f,pan:p};
+}
+
+function createNoise(gain,filterFreq){
+  const bufSize=audioCtx.sampleRate*2;const buf=audioCtx.createBuffer(1,bufSize,audioCtx.sampleRate);
+  const d=buf.getChannelData(0);for(let i=0;i<bufSize;i++)d[i]=Math.random()*2-1;
+  const s=audioCtx.createBufferSource();s.buffer=buf;s.loop=true;
+  const g=audioCtx.createGain();g.gain.value=gain;
+  const f=audioCtx.createBiquadFilter();f.type='lowpass';f.frequency.value=filterFreq;
+  s.connect(f);f.connect(g);g.connect(masterGain);s.start();currentNodes.push(s);
+  return{src:s,gain:g,filter:f};
+}
+
+// Play a section with genre+mood+bpm driven sound
+function playSection(sectionIdx,genre,mood,bpm){
+  stopAllNodes();
+  const mp=moodParams(mood);const base=mp.baseNote;const sc=mp.scale;
+  const beatLen=60/bpm;
+
+  function note(deg){return base+sc[((deg%sc.length)+sc.length)%sc.length]+12*Math.floor(deg/sc.length)}
+
+  if(sectionIdx===0){// INTRO - pad + atmosphere
+    createOsc('sine',midiToFreq(note(0)),.12*mp.gain,mp.filterBase*0.6,-0.3);
+    createOsc('sine',midiToFreq(note(2)),.08*mp.gain,mp.filterBase*0.5,0.3);
+    if(genre==='electronic')createOsc('sawtooth',midiToFreq(note(4)),.04*mp.gain,mp.filterBase*0.3,0);
+    if(genre==='ambient')createNoise(.02*mp.gain,mp.filterBase*0.2);
+    if(genre==='rock')createOsc('triangle',midiToFreq(note(0)+12),.06*mp.gain,mp.filterBase*0.4,0);
+    if(genre==='jazz')createOsc('triangle',midiToFreq(note(0)),.1*mp.gain,mp.filterBase*0.7,0);
+  }else if(sectionIdx===1){// VERSE - add rhythm + bass
+    createOsc('sine',midiToFreq(note(0)-12),.18*mp.gain,mp.filterBase*0.5,0); // bass
+    createOsc('sawtooth',midiToFreq(note(0)),.07*mp.gain,mp.filterBase*0.6,-0.4);
+    createOsc('square',midiToFreq(note(2)),.04*mp.gain,mp.filterBase*0.4,0.4);
+    createNoise(.03*mp.gain,mp.filterBase*0.15); // hi-hat-ish
+    if(genre==='jazz')createOsc('triangle',midiToFreq(note(4)),.06*mp.gain,mp.filterBase*0.8,0.2);
+    if(genre==='rock'){createOsc('sawtooth',midiToFreq(note(0)-12),.12*mp.gain,mp.filterBase*0.7,0);createNoise(.04*mp.gain,200);}
+  }else if(sectionIdx===2){// CHORUS - full arrangement
+    createOsc('sine',midiToFreq(note(0)-12),.22*mp.gain,mp.filterBase,0); // sub bass
+    createOsc('sawtooth',midiToFreq(note(0)),.1*mp.gain,mp.filterBase*0.8,-0.5);
+    createOsc('sawtooth',midiToFreq(note(2)),.08*mp.gain,mp.filterBase*0.7,0.5);
+    createOsc('square',midiToFreq(note(4)),.06*mp.gain,mp.filterBase*0.9,0);
+    createOsc('triangle',midiToFreq(note(0)+12),.05*mp.gain,mp.filterBase,-0.2); // lead
+    createNoise(.04*mp.gain,mp.filterBase*0.3);
+    if(genre==='electronic')createOsc('sawtooth',midiToFreq(note(4)+12),.04*mp.gain,mp.filterBase*1.2,0.3);
+    if(genre==='rock'){createOsc('sawtooth',midiToFreq(note(0)),.14*mp.gain,mp.filterBase*1.1,-0.6);createOsc('sawtooth',midiToFreq(note(0)+0.1),.14*mp.gain,mp.filterBase*1.1,0.6);}
+  }else if(sectionIdx===3){// BRIDGE - stripped
+    createOsc('triangle',midiToFreq(note(3)),.1*mp.gain,mp.filterBase*0.5,0);
+    createOsc('sine',midiToFreq(note(5)),.07*mp.gain,mp.filterBase*0.4,0.3);
+    if(genre==='ambient')createNoise(.015*mp.gain,mp.filterBase*0.1);
+    if(genre==='jazz')createOsc('sine',midiToFreq(note(3)+12),.06*mp.gain,mp.filterBase*0.6,-0.2);
+  }else{// OUTRO - fading
+    const pad=createOsc('sine',midiToFreq(note(0)),.1*mp.gain,mp.filterBase*0.3,0);
+    const pad2=createOsc('triangle',midiToFreq(note(2)),.06*mp.gain,mp.filterBase*0.25,0.2);
+    // fade
+    const dur=SECTION_DEFS[4].bars*4*beatLen;
+    pad.gain.gain.linearRampToValueAtTime(0,audioCtx.currentTime+dur);
+    pad2.gain.gain.linearRampToValueAtTime(0,audioCtx.currentTime+dur);
+  }
+}
+
+// ─── Visualization ───
+function drawViz(){
+  if(!analyser)return;
+  const w=vizCanvas.width,h=vizCanvas.height;
+  const bufLen=analyser.frequencyBinCount;const data=new Uint8Array(bufLen);
+  analyser.getByteTimeDomainData(data);
+  vizCtx.fillStyle='#0e0e1a';vizCtx.fillRect(0,0,w,h);
+  vizCtx.lineWidth=2;vizCtx.strokeStyle='#4fc3f7';vizCtx.shadowBlur=6;vizCtx.shadowColor='#4fc3f7';
+  vizCtx.beginPath();
+  const slice=w/bufLen;let x=0;
+  for(let i=0;i<bufLen;i++){const v=data[i]/128.0;const y=(v*h)/2;i===0?vizCtx.moveTo(x,y):vizCtx.lineTo(x,y);x+=slice;}
+  vizCtx.lineTo(w,h/2);vizCtx.stroke();vizCtx.shadowBlur=0;
+  if(isPlaying)animFrame=requestAnimationFrame(drawViz);
+}
+
+function resizeCanvas(){vizCanvas.width=vizCanvas.clientWidth*window.devicePixelRatio;vizCanvas.height=vizCanvas.clientHeight*window.devicePixelRatio;vizCtx.scale(window.devicePixelRatio,window.devicePixelRatio);}
+window.addEventListener('resize',resizeCanvas);resizeCanvas();
+
+// ─── Build Timeline UI ───
+function buildTimeline(genre){
+  timelineEl.innerHTML='';
+  const instr=GENRE_INSTRUMENTS[genre];
+  const keys=['intro','verse','chorus','bridge','outro'];
+  SECTION_DEFS.forEach((sec,i)=>{
+    if(i>0){const conn=document.createElement('div');conn.className='timeline-connector';conn.id='conn-'+i;timelineEl.appendChild(conn);}
+    const node=document.createElement('div');node.className='section-node';node.id='node-'+i;
+    node.innerHTML=`<div class="check">\u2713</div><div class="section-name">${sec.name}</div><div class="section-bars">${sec.bars} bars</div><div class="section-instruments" id="instr-${i}"></div>`;
+    timelineEl.appendChild(node);
+  });
+  return keys.map(k=>instr[k]);
+}
+
+// ─── Typewriter effect for instruments ───
+function typewriter(el,text,speed=35){
+  return new Promise(resolve=>{
+    el.textContent='';let i=0;
+    const iv=setInterval(()=>{if(stopRequested){clearInterval(iv);resolve();return;}el.textContent+=text[i];i++;if(i>=text.length){clearInterval(iv);resolve();}},speed);
+  });
+}
+
+// ─── Planning Phase ───
+async function planPhase(genre){
+  statusEl.className='status-text';statusEl.textContent='PLANNING \u2014 decomposing goal...';statusEl.classList.add('planning-anim');
+  const instrSets=buildTimeline(genre);
+  // reveal nodes one by one with typewriter
+  for(let i=0;i<SECTION_DEFS.length;i++){
+    if(stopRequested)return instrSets;
+    await new Promise(r=>setTimeout(r,350));
+    const node=document.getElementById('node-'+i);node.classList.add('visible');
+    if(i>0){document.getElementById('conn-'+i).classList.add('active');}
+    const instrEl=document.getElementById('instr-'+i);
+    await typewriter(instrEl,instrSets[i].join(' \u2022 '),30);
+  }
+  statusEl.classList.remove('planning-anim');statusEl.textContent='PLAN READY \u2014 5 sections mapped';
+  await new Promise(r=>setTimeout(r,600));
+  return instrSets;
+}
+
+// ─── Execution Phase ───
+async function executePhase(genre,mood,bpm){
+  initAudio();isPlaying=true;animFrame=requestAnimationFrame(drawViz);
+  statusEl.className='status-text executing';
+  const beatLen=60/bpm;
+  const totalBars=SECTION_DEFS.reduce((s,d)=>s+d.bars,0);let barsSoFar=0;
+
+  for(let i=0;i<SECTION_DEFS.length;i++){
+    if(stopRequested)break;
+    const sec=SECTION_DEFS[i];
+    // highlight
+    document.querySelectorAll('.section-node').forEach(n=>n.classList.remove('active'));
+    const node=document.getElementById('node-'+i);node.classList.add('active');
+    statusEl.textContent=`EXECUTING \u2014 ${sec.name} (${sec.bars} bars)`;
+    detailEl.innerHTML=`<h3>${sec.name}</h3><p>${sec.desc}</p>`;
+
+    playSection(i,genre,mood,bpm);
+
+    const secDuration=sec.bars*4*beatLen*1000;
+    const startBar=barsSoFar;
+    // animate progress
+    const startTime=performance.now();
+    await new Promise(resolve=>{
+      function tick(){
+        if(stopRequested){resolve();return;}
+        const elapsed=performance.now()-startTime;const frac=Math.min(elapsed/secDuration,1);
+        const overallPct=((startBar+sec.bars*frac)/totalBars)*100;
+        progressFill.style.width=overallPct+'%';
+        if(frac<1)requestAnimationFrame(tick);else resolve();
+      }
+      tick();
+    });
+
+    barsSoFar+=sec.bars;
+    // mark completed
+    node.classList.remove('active');node.classList.add('completed');
+    if(i<SECTION_DEFS.length-1&&document.getElementById('conn-'+(i+1)))document.getElementById('conn-'+(i+1)).classList.add('completed');
+  }
+
+  stopAllNodes();isPlaying=false;if(animFrame)cancelAnimationFrame(animFrame);
+  if(!stopRequested){
+    statusEl.className='status-text done';statusEl.textContent='COMPLETE \u2014 all sections executed';
+    detailEl.innerHTML='<p style="color:#4caf50">Song plan fully executed.</p>';
+    progressFill.style.width='100%';
+  }
+}
+
+// ─── Main flow ───
+async function run(){
+  stopRequested=false;
+  const genre=genreEl.value,mood=moodEl.value,bpm=parseInt(bpmEl.value);
+  planBtn.disabled=true;replanBtn.style.display='none';stopBtn.style.display='inline-block';
+  progressFill.style.width='0';detailEl.innerHTML='';
+
+  await planPhase(genre);
+  if(!stopRequested)await executePhase(genre,mood,bpm);
+
+  planBtn.disabled=false;replanBtn.style.display='inline-block';stopBtn.style.display='none';
+}
+
+function stopAll(){
+  stopRequested=true;stopAllNodes();isPlaying=false;
+  if(animFrame)cancelAnimationFrame(animFrame);
+  statusEl.className='status-text';statusEl.textContent='Stopped';
+  planBtn.disabled=false;replanBtn.style.display='inline-block';stopBtn.style.display='none';
+}
+
+planBtn.onclick=run;
+replanBtn.onclick=run;
+stopBtn.onclick=stopAll;
+</script>
+</body>
+</html>

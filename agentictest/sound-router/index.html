@@ -1,0 +1,551 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sound Router — Agentic Routing Pattern</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a12;
+    color: #e0e0e0;
+    font-family: 'Courier New', monospace;
+    overflow: hidden;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    text-align: center;
+    padding: 12px 0 4px;
+    z-index: 10;
+    position: relative;
+  }
+  header h1 {
+    font-size: 1.4rem;
+    letter-spacing: 4px;
+    background: linear-gradient(90deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  header p { font-size: 0.7rem; color: #666; margin-top: 2px; }
+  #canvas { flex: 1; display: block; cursor: crosshair; }
+  #hud {
+    position: fixed;
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 16px;
+    background: rgba(10,10,18,0.85);
+    border: 1px solid #222;
+    border-radius: 10px;
+    padding: 8px 20px;
+    z-index: 10;
+    font-size: 0.7rem;
+  }
+  .route-label {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    opacity: 0.5;
+    transition: opacity 0.3s;
+  }
+  .route-label.active { opacity: 1; }
+  .route-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+  }
+  #keys-hint {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #333;
+    font-size: 0.85rem;
+    text-align: center;
+    pointer-events: none;
+    transition: opacity 1s;
+    line-height: 1.8;
+  }
+  #keys-hint .key {
+    display: inline-block;
+    border: 1px solid #333;
+    border-radius: 4px;
+    padding: 2px 8px;
+    margin: 0 2px;
+    min-width: 24px;
+    text-align: center;
+  }
+</style>
+</head>
+<body>
+<header>
+  <h1>SOUND ROUTER</h1>
+  <p>Agentic Routing Pattern — classify &amp; route each note through specialized sonic pathways</p>
+</header>
+<canvas id="canvas"></canvas>
+<div id="hud">
+  <div class="route-label" id="lbl-crystal"><span class="route-dot" style="background:#4d96ff"></span> CRYSTAL</div>
+  <div class="route-label" id="lbl-warm"><span class="route-dot" style="background:#ffd93d"></span> WARM</div>
+  <div class="route-label" id="lbl-pulse"><span class="route-dot" style="background:#6bcb77"></span> PULSE</div>
+  <div class="route-label" id="lbl-deep"><span class="route-dot" style="background:#ff6b6b"></span> DEEP</div>
+</div>
+<div id="keys-hint">
+  <div>Play notes with your keyboard</div>
+  <div style="margin-top:6px">
+    <span class="key">A</span><span class="key">W</span><span class="key">S</span><span class="key">E</span><span class="key">D</span><span class="key">F</span><span class="key">T</span><span class="key">G</span><span class="key">Y</span><span class="key">H</span><span class="key">U</span><span class="key">J</span><span class="key">K</span>
+  </div>
+  <div style="margin-top:4px;font-size:0.7rem;color:#444">
+    <span class="key" style="padding:2px 12px">Z</span> octave down &nbsp;
+    <span class="key" style="padding:2px 12px">X</span> octave up &nbsp;
+    or click anywhere
+  </div>
+</div>
+
+<script>
+// ─── Audio Context ────────────────────────────────────────
+let actx;
+function ensureAudio() {
+  if (!actx) actx = new (window.AudioContext || window.webkitAudioContext)();
+  if (actx.state === 'suspended') actx.resume();
+  return actx;
+}
+
+// ─── Route Definitions ───────────────────────────────────
+const ROUTES = {
+  crystal: { color: '#4d96ff', glow: '#4d96ff88', label: 'CRYSTAL', angle: -Math.PI * 0.35 },
+  warm:    { color: '#ffd93d', glow: '#ffd93d88', label: 'WARM',    angle: -Math.PI * 0.12 },
+  pulse:   { color: '#6bcb77', glow: '#6bcb7788', label: 'PULSE',   angle:  Math.PI * 0.12 },
+  deep:    { color: '#ff6b6b', glow: '#ff6b6b88', label: 'DEEP',    angle:  Math.PI * 0.35 },
+};
+
+// ─── Router Logic: classify a note ───────────────────────
+function classifyNote(freq) {
+  if (freq >= 520) return 'crystal';
+  if (freq >= 330) return 'warm';
+  if (freq >= 200) return 'pulse';
+  return 'deep';
+}
+
+// ─── Sound Engines per Route ─────────────────────────────
+function playCrystal(freq) {
+  const ctx = ensureAudio();
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const g = ctx.createGain();
+  const delay = ctx.createDelay(0.5);
+  const dg = ctx.createGain();
+  const filter = ctx.createBiquadFilter();
+  osc.type = 'sine';
+  osc.frequency.setValueAtTime(freq, now);
+  osc.frequency.exponentialRampToValueAtTime(freq * 1.5, now + 0.6);
+  filter.type = 'highpass';
+  filter.frequency.value = 800;
+  filter.Q.value = 8;
+  g.gain.setValueAtTime(0.25, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + 1.2);
+  delay.delayTime.value = 0.15;
+  dg.gain.value = 0.4;
+  osc.connect(filter).connect(g).connect(ctx.destination);
+  g.connect(delay).connect(dg).connect(ctx.destination);
+  dg.connect(delay); // feedback
+  osc.start(now);
+  osc.stop(now + 1.2);
+}
+
+function playWarm(freq) {
+  const ctx = ensureAudio();
+  const now = ctx.currentTime;
+  const osc1 = ctx.createOscillator();
+  const osc2 = ctx.createOscillator();
+  const g = ctx.createGain();
+  const filter = ctx.createBiquadFilter();
+  osc1.type = 'triangle';
+  osc1.frequency.value = freq;
+  osc2.type = 'sawtooth';
+  osc2.frequency.value = freq * 1.002;
+  filter.type = 'lowpass';
+  filter.frequency.setValueAtTime(2000, now);
+  filter.frequency.exponentialRampToValueAtTime(400, now + 0.8);
+  filter.Q.value = 3;
+  g.gain.setValueAtTime(0.18, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + 0.9);
+  osc1.connect(filter);
+  osc2.connect(filter);
+  filter.connect(g).connect(ctx.destination);
+  osc1.start(now); osc1.stop(now + 0.9);
+  osc2.start(now); osc2.stop(now + 0.9);
+}
+
+function playPulse(freq) {
+  const ctx = ensureAudio();
+  const now = ctx.currentTime;
+  for (let i = 0; i < 4; i++) {
+    const t = now + i * 0.09;
+    const osc = ctx.createOscillator();
+    const g = ctx.createGain();
+    osc.type = 'square';
+    osc.frequency.value = freq;
+    g.gain.setValueAtTime(0.15, t);
+    g.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+    osc.connect(g).connect(ctx.destination);
+    osc.start(t);
+    osc.stop(t + 0.08);
+  }
+}
+
+function playDeep(freq) {
+  const ctx = ensureAudio();
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const sub = ctx.createOscillator();
+  const g = ctx.createGain();
+  const dist = ctx.createWaveShaper();
+  const curve = new Float32Array(256);
+  for (let i = 0; i < 256; i++) { const x = (i / 128) - 1; curve[i] = Math.tanh(x * 3); }
+  dist.curve = curve;
+  osc.type = 'sawtooth';
+  osc.frequency.value = freq;
+  sub.type = 'sine';
+  sub.frequency.value = freq * 0.5;
+  g.gain.setValueAtTime(0.2, now);
+  g.gain.exponentialRampToValueAtTime(0.001, now + 1.0);
+  osc.connect(dist);
+  sub.connect(dist);
+  dist.connect(g).connect(ctx.destination);
+  osc.start(now); osc.stop(now + 1.0);
+  sub.start(now); sub.stop(now + 1.0);
+}
+
+const PLAY = { crystal: playCrystal, warm: playWarm, pulse: playPulse, deep: playDeep };
+
+// ─── Keyboard Mapping ────────────────────────────────────
+const KEY_MAP = {
+  'a':0,'w':1,'s':2,'e':3,'d':4,'f':5,'t':6,'g':7,'y':8,'h':9,'u':10,'j':11,'k':12
+};
+let octave = 4;
+function noteFreq(semitone) {
+  const midi = 12 * octave + semitone;
+  return 440 * Math.pow(2, (midi - 69) / 12);
+}
+
+// ─── Canvas & Visualization ──────────────────────────────
+const canvas = document.getElementById('canvas');
+const cx = canvas.getContext('2d');
+let W, H;
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+}
+window.addEventListener('resize', resize);
+resize();
+
+// Node positions
+function routerPos() { return { x: W * 0.28, y: H * 0.48 }; }
+function inputPos()  { return { x: W * 0.08, y: H * 0.48 }; }
+function routeEndPos(route) {
+  const r = ROUTES[route];
+  const rp = routerPos();
+  const len = Math.min(W, H) * 0.38;
+  return { x: rp.x + Math.cos(r.angle) * len, y: rp.y + Math.sin(r.angle) * len };
+}
+
+// Particles
+const particles = [];
+class Particle {
+  constructor(freq, route) {
+    this.route = route;
+    this.freq = freq;
+    this.color = ROUTES[route].color;
+    this.t = 0;           // 0→1 progress along path
+    this.phase = 0;       // 0 = input→router, 1 = router→endpoint
+    this.life = 1;
+    this.size = 3 + Math.random() * 3;
+    this.trail = [];
+  }
+  update(dt) {
+    const speed = this.phase === 0 ? 2.5 : 1.8;
+    this.t += dt * speed;
+    if (this.t >= 1) {
+      if (this.phase === 0) {
+        this.phase = 1;
+        this.t = 0;
+      } else {
+        this.life -= dt * 2;
+      }
+    }
+    // compute position
+    let from, to;
+    if (this.phase === 0) {
+      from = inputPos();
+      to = routerPos();
+    } else {
+      from = routerPos();
+      to = routeEndPos(this.route);
+    }
+    const ease = this.t * this.t * (3 - 2 * this.t); // smoothstep
+    this.x = from.x + (to.x - from.x) * ease;
+    this.y = from.y + (to.y - from.y) * ease;
+    // wobble
+    const wobble = Math.sin(this.t * Math.PI * 4 + performance.now() * 0.005) * 8;
+    const dx = to.x - from.x, dy = to.y - from.y;
+    const len = Math.sqrt(dx*dx + dy*dy) || 1;
+    this.x += (-dy / len) * wobble;
+    this.y += (dx / len) * wobble;
+    this.trail.push({ x: this.x, y: this.y, a: this.life });
+    if (this.trail.length > 30) this.trail.shift();
+    return this.life > 0;
+  }
+  draw(cx) {
+    // trail
+    if (this.trail.length > 1) {
+      cx.beginPath();
+      cx.moveTo(this.trail[0].x, this.trail[0].y);
+      for (let i = 1; i < this.trail.length; i++) {
+        cx.lineTo(this.trail[i].x, this.trail[i].y);
+      }
+      cx.strokeStyle = this.color + '44';
+      cx.lineWidth = this.size * 0.6;
+      cx.stroke();
+    }
+    // particle
+    cx.beginPath();
+    cx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+    cx.fillStyle = this.color;
+    cx.shadowColor = ROUTES[this.route].glow;
+    cx.shadowBlur = 15;
+    cx.fill();
+    cx.shadowBlur = 0;
+  }
+}
+
+// Route activation flash
+const routeFlash = { crystal: 0, warm: 0, pulse: 0, deep: 0 };
+
+// Trigger a note
+let hintVisible = true;
+function triggerNote(freq) {
+  if (hintVisible) {
+    hintVisible = false;
+    document.getElementById('keys-hint').style.opacity = '0';
+  }
+  const route = classifyNote(freq);
+  PLAY[route](freq);
+  // spawn particles
+  for (let i = 0; i < 5 + Math.floor(Math.random() * 4); i++) {
+    const p = new Particle(freq, route);
+    p.t = -i * 0.06; // stagger
+    particles.push(p);
+  }
+  routeFlash[route] = 1;
+  // HUD label
+  Object.keys(ROUTES).forEach(r => {
+    document.getElementById('lbl-' + r).classList.toggle('active', r === route);
+  });
+}
+
+// ─── Keyboard Input ──────────────────────────────────────
+const keysDown = new Set();
+window.addEventListener('keydown', e => {
+  const k = e.key.toLowerCase();
+  if (k === 'z') { octave = Math.max(2, octave - 1); return; }
+  if (k === 'x') { octave = Math.min(7, octave + 1); return; }
+  if (keysDown.has(k)) return;
+  keysDown.add(k);
+  if (KEY_MAP[k] !== undefined) {
+    triggerNote(noteFreq(KEY_MAP[k]));
+  }
+});
+window.addEventListener('keyup', e => keysDown.delete(e.key.toLowerCase()));
+
+// ─── Mouse/Touch Input ───────────────────────────────────
+canvas.addEventListener('pointerdown', e => {
+  const freq = 130 + (e.clientX / W) * 900;
+  triggerNote(freq);
+});
+
+// ─── Draw Helpers ────────────────────────────────────────
+function drawNode(x, y, radius, color, glow, label, flash) {
+  // glow ring
+  cx.beginPath();
+  cx.arc(x, y, radius + 6 + flash * 10, 0, Math.PI * 2);
+  cx.strokeStyle = glow;
+  cx.lineWidth = 2 + flash * 3;
+  cx.globalAlpha = 0.3 + flash * 0.5;
+  cx.stroke();
+  cx.globalAlpha = 1;
+  // body
+  cx.beginPath();
+  cx.arc(x, y, radius, 0, Math.PI * 2);
+  const grad = cx.createRadialGradient(x, y, 0, x, y, radius);
+  grad.addColorStop(0, color + 'cc');
+  grad.addColorStop(1, color + '22');
+  cx.fillStyle = grad;
+  cx.fill();
+  cx.strokeStyle = color;
+  cx.lineWidth = 1.5;
+  cx.stroke();
+  // label
+  cx.fillStyle = color;
+  cx.font = '10px Courier New';
+  cx.textAlign = 'center';
+  cx.fillText(label, x, y + radius + 16);
+}
+
+function drawConnection(from, to, color, alpha) {
+  cx.beginPath();
+  const mx = (from.x + to.x) / 2;
+  const my = (from.y + to.y) / 2 - 20;
+  cx.moveTo(from.x, from.y);
+  cx.quadraticCurveTo(mx, my, to.x, to.y);
+  cx.strokeStyle = color;
+  cx.globalAlpha = alpha;
+  cx.lineWidth = 1;
+  cx.setLineDash([4, 6]);
+  cx.stroke();
+  cx.setLineDash([]);
+  cx.globalAlpha = 1;
+}
+
+// ─── Spectrum Analyzer ───────────────────────────────────
+let analyser, freqData;
+function setupAnalyser() {
+  const ctx = ensureAudio();
+  if (!analyser) {
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 256;
+    freqData = new Uint8Array(analyser.frequencyBinCount);
+    // connect destination to analyser via a trick: use a splitter
+    // Actually, we'll connect each sound to analyser too
+  }
+}
+
+// ─── Main Render Loop ────────────────────────────────────
+let lastT = performance.now();
+
+function frame(now) {
+  const dt = Math.min((now - lastT) / 1000, 0.05);
+  lastT = now;
+
+  cx.fillStyle = 'rgba(10,10,18,0.25)';
+  cx.fillRect(0, 0, W, H);
+
+  const inp = inputPos();
+  const rtr = routerPos();
+
+  // Draw connections
+  drawConnection(inp, rtr, '#555', 0.3);
+  Object.keys(ROUTES).forEach(r => {
+    const end = routeEndPos(r);
+    drawConnection(rtr, end, ROUTES[r].color, 0.15 + routeFlash[r] * 0.4);
+  });
+
+  // Draw input node
+  drawNode(inp.x, inp.y, 18, '#888', '#88888888', 'INPUT', 0);
+
+  // Draw router node
+  const routerFlash = Math.max(...Object.values(routeFlash));
+  drawNode(rtr.x, rtr.y, 26, '#fff', '#ffffff66', 'ROUTER', routerFlash * 0.5);
+
+  // Draw classifier text near router
+  cx.fillStyle = '#444';
+  cx.font = '9px Courier New';
+  cx.textAlign = 'center';
+  cx.fillText('classify(freq)', rtr.x, rtr.y - 38);
+  cx.fillText('→ route', rtr.x, rtr.y - 26);
+
+  // Draw route endpoint nodes
+  Object.keys(ROUTES).forEach(r => {
+    const end = routeEndPos(r);
+    drawNode(end.x, end.y, 20, ROUTES[r].color, ROUTES[r].glow, ROUTES[r].label, routeFlash[r]);
+
+    // Draw effect label
+    const labels = { crystal: 'delay + shimmer', warm: 'chorus + filter', pulse: 'stutter + echo', deep: 'distort + sub' };
+    cx.fillStyle = ROUTES[r].color + '88';
+    cx.font = '8px Courier New';
+    cx.fillText(labels[r], end.x, end.y + 34);
+  });
+
+  // Draw frequency range indicators near each route
+  Object.keys(ROUTES).forEach(r => {
+    const end = routeEndPos(r);
+    const ranges = { crystal: '≥520 Hz', warm: '330–520 Hz', pulse: '200–330 Hz', deep: '<200 Hz' };
+    cx.fillStyle = ROUTES[r].color + '55';
+    cx.font = '8px Courier New';
+    cx.fillText(ranges[r], end.x, end.y + 44);
+  });
+
+  // Update & draw particles
+  for (let i = particles.length - 1; i >= 0; i--) {
+    if (!particles[i].update(dt)) {
+      particles.splice(i, 1);
+    } else {
+      particles[i].draw(cx);
+    }
+  }
+
+  // Decay route flash
+  Object.keys(routeFlash).forEach(r => {
+    routeFlash[r] = Math.max(0, routeFlash[r] - dt * 3);
+  });
+
+  // Draw octave indicator
+  cx.fillStyle = '#444';
+  cx.font = '10px Courier New';
+  cx.textAlign = 'left';
+  cx.fillText(`Octave: ${octave}`, 14, H - 14);
+
+  // Draw route decision arrows emanating from router
+  const rp = routerPos();
+  Object.keys(ROUTES).forEach(r => {
+    const end = routeEndPos(r);
+    const dx = end.x - rp.x, dy = end.y - rp.y;
+    const len = Math.sqrt(dx*dx + dy*dy);
+    const nx = dx/len, ny = dy/len;
+    // Small arrow indicator
+    const ax = rp.x + nx * 34, ay = rp.y + ny * 34;
+    cx.beginPath();
+    cx.moveTo(ax, ay);
+    cx.lineTo(ax + nx * 8 - ny * 4, ay + ny * 8 + nx * 4);
+    cx.lineTo(ax + nx * 8 + ny * 4, ay + ny * 8 - nx * 4);
+    cx.closePath();
+    cx.fillStyle = ROUTES[r].color + (routeFlash[r] > 0.1 ? 'cc' : '33');
+    cx.fill();
+  });
+
+  // Right side: live waveform rings per route
+  const ringCX = W * 0.82, ringCY = H * 0.48;
+  Object.keys(ROUTES).forEach((r, i) => {
+    const radius = 40 + i * 30;
+    const flash = routeFlash[r];
+    cx.beginPath();
+    const segments = 60;
+    for (let s = 0; s <= segments; s++) {
+      const a = (s / segments) * Math.PI * 2 - Math.PI / 2;
+      const wobble = flash * Math.sin(a * 8 + now * 0.003 + i) * 6;
+      const px = ringCX + Math.cos(a) * (radius + wobble);
+      const py = ringCY + Math.sin(a) * (radius + wobble);
+      if (s === 0) cx.moveTo(px, py); else cx.lineTo(px, py);
+    }
+    cx.closePath();
+    cx.strokeStyle = ROUTES[r].color;
+    cx.globalAlpha = 0.15 + flash * 0.6;
+    cx.lineWidth = 1.5 + flash * 2;
+    cx.stroke();
+    cx.globalAlpha = 1;
+  });
+  // Center label for rings
+  cx.fillStyle = '#333';
+  cx.font = '9px Courier New';
+  cx.textAlign = 'center';
+  cx.fillText('OUTPUT MIX', ringCX, ringCY + 4);
+
+  requestAnimationFrame(frame);
+}
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
