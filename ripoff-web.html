@@ -1,0 +1,1127 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Rip Off</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: #000; display: flex; justify-content: center; align-items: center;
+         height: 100vh; overflow: hidden; }
+  canvas { display: block; background: #000; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+'use strict';
+
+// ─── Canvas setup ────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+
+function resize() {
+  const W = window.innerWidth, H = window.innerHeight;
+  const aspect = 16 / 10;
+  let w = W, h = W / aspect;
+  if (h > H) { h = H; w = H * aspect; }
+  canvas.width  = Math.floor(w);
+  canvas.height = Math.floor(h);
+}
+resize();
+window.addEventListener('resize', resize);
+
+// ─── Constants ───────────────────────────────────────────────────────────────
+const COLOR = {
+  playerGreen : '#00ff66',
+  enemyColors : ['#ff4019','#ff9900','#e6e600','#19e64c','#3399ff','#cc33ff'],
+  canisterCyan: '#33e5ff',
+  bulletYellow: '#fff233',
+  hudWhite    : '#e5e5e5',
+  dimWhite    : '#8c8c8c',
+};
+
+// ─── Utilities ────────────────────────────────────────────────────────────────
+function wrap(v, lo, hi) {
+  const range = hi - lo;
+  while (v >  hi) v -= range;
+  while (v <  lo) v += range;
+  return v;
+}
+function shortestAngle(from, to) {
+  let d = to - from;
+  while (d >  Math.PI) d -= Math.PI * 2;
+  while (d < -Math.PI) d += Math.PI * 2;
+  return d;
+}
+function dist2(ax, ay, bx, by) {
+  const dx = ax-bx, dy = ay-by;
+  return dx*dx + dy*dy;
+}
+function rand(lo, hi) { return lo + Math.random() * (hi - lo); }
+function randInt(lo, hi) { return Math.floor(rand(lo, hi + 1)); }
+
+// ─── Drawing helpers ─────────────────────────────────────────────────────────
+function vectorLine(pts, color, width, closed, glow) {
+  if (pts.length < 2) return;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth   = width;
+  ctx.lineCap     = 'round';
+  ctx.lineJoin    = 'round';
+  if (glow) { ctx.shadowColor = color; ctx.shadowBlur = 8; }
+  ctx.beginPath();
+  ctx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+  if (closed) ctx.closePath();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawShape(cx, cy, angle, pts, color, width, closed) {
+  const cos = Math.cos(angle), sin = Math.sin(angle);
+  const transformed = pts.map(([x, y]) => [
+    cx + x * cos - y * sin,
+    cy + x * sin + y * cos,
+  ]);
+  vectorLine(transformed, color, width, closed, true);
+}
+
+// ─── Stars ───────────────────────────────────────────────────────────────────
+const STARS = Array.from({length: 100}, () => ({
+  x: rand(-1, 1), y: rand(-1, 1),
+  r: rand(0.3, 1.2), a: rand(0.15, 0.55)
+}));
+
+function drawStars() {
+  const W = canvas.width, H = canvas.height;
+  for (const s of STARS) {
+    ctx.save();
+    ctx.globalAlpha = s.a;
+    ctx.fillStyle   = '#fff';
+    ctx.beginPath();
+    ctx.arc(s.x * W/2 + W/2, s.y * H/2 + H/2, s.r, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+  }
+}
+
+// ─── Particles ───────────────────────────────────────────────────────────────
+const particles = [];
+
+function spawnExplosion(x, y, color, count, lenLo, lenHi) {
+  for (let i = 0; i < count; i++) {
+    const angle = rand(0, Math.PI * 2);
+    const spd   = rand(60, 160);
+    const len   = rand(lenLo, lenHi);
+    particles.push({
+      x, y,
+      vx: Math.cos(angle) * spd, vy: Math.sin(angle) * spd,
+      ex: Math.cos(angle) * len,  ey: Math.sin(angle) * len,
+      color, life: 0.7, maxLife: 0.7, width: rand(1.2, 2.0)
+    });
+  }
+  // central flash
+  particles.push({
+    x, y, flash: true, color,
+    r: 0, maxR: 28, life: 0.22, maxLife: 0.22
+  });
+}
+
+function updateParticles(dt) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.life -= dt;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    if (!p.flash) { p.x += p.vx * dt; p.y += p.vy * dt; }
+  }
+}
+
+function drawParticles() {
+  for (const p of particles) {
+    const t = p.life / p.maxLife;
+    ctx.save();
+    ctx.globalAlpha = t;
+    if (p.flash) {
+      const r = p.maxR * (1 - t);
+      ctx.fillStyle   = p.color;
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur  = 16;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+      ctx.fill();
+    } else {
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth   = p.width;
+      ctx.lineCap     = 'round';
+      ctx.shadowColor = p.color;
+      ctx.shadowBlur  = 6;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x + p.ex, p.y + p.ey);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
+// ─── Canister ─────────────────────────────────────────────────────────────────
+class Canister {
+  constructor(x, y) {
+    this.x = x; this.y = y;
+    this.active    = true;
+    this.towed     = false;
+    this.towedBy   = null;
+    this.alpha     = 1;
+    this.dying     = false;
+    this.dyingT    = 0;
+    this.dropTimer = 0;   // grace period after being dropped — not grabbable
+  }
+
+  drop(x, y) {
+    // Called when the towing enemy is destroyed — freeze canister here
+    this.x         = x;
+    this.y         = y;
+    this.towed     = false;
+    this.towedBy   = null;
+    this.dropTimer = 1.2;  // 1.2s before another enemy can grab it
+  }
+
+  stolen() {
+    this.active = false;
+    this.dying  = true;
+    this.dyingT = 0.45;
+  }
+
+  update(dt) {
+    if (this.dying) {
+      this.dyingT -= dt;
+      this.alpha = Math.max(0, this.dyingT / 0.45);
+    }
+    if (this.dropTimer > 0) this.dropTimer -= dt;
+  }
+
+  draw() {
+    if (!this.active && !this.dying) return;
+    const r = 13;
+    ctx.save();
+    ctx.globalAlpha = this.alpha;
+    // hexagon
+    const pts = [];
+    for (let i = 0; i < 6; i++) {
+      const a = i * Math.PI / 3 + Math.PI / 6;
+      pts.push([this.x + Math.cos(a)*r, this.y + Math.sin(a)*r]);
+    }
+    vectorLine(pts, COLOR.canisterCyan, 1.5, true, true);
+    // inner cross
+    ctx.strokeStyle = COLOR.canisterCyan;
+    ctx.globalAlpha = this.alpha * 0.5;
+    ctx.lineWidth   = 1;
+    ctx.shadowColor = COLOR.canisterCyan;
+    ctx.shadowBlur  = 6;
+    ctx.beginPath();
+    ctx.moveTo(this.x - 6, this.y); ctx.lineTo(this.x + 6, this.y);
+    ctx.moveTo(this.x, this.y - 6); ctx.lineTo(this.x, this.y + 6);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// ─── Bullet ───────────────────────────────────────────────────────────────────
+class Bullet {
+  constructor(x, y, vx, vy, isPlayer) {
+    this.x = x; this.y = y;
+    this.vx = vx; this.vy = vy;
+    this.isPlayer = isPlayer;
+    this.life = 1.8;
+    this.dead = false;
+    this.color = isPlayer ? COLOR.bulletYellow : COLOR.enemyColors[0];
+  }
+
+  update(dt) {
+    this.life -= dt;
+    if (this.life <= 0) { this.dead = true; return; }
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    const W = canvas.width, H = canvas.height;
+    this.x = wrap(this.x, 0, W);
+    this.y = wrap(this.y, 0, H);
+  }
+
+  draw() {
+    ctx.save();
+    ctx.strokeStyle = this.color;
+    ctx.lineWidth   = 2;
+    ctx.lineCap     = 'round';
+    ctx.shadowColor = this.color;
+    ctx.shadowBlur  = 8;
+    const len = 5;
+    const norm = Math.hypot(this.vx, this.vy) || 1;
+    const nx = this.vx/norm, ny = this.vy/norm;
+    ctx.beginPath();
+    ctx.moveTo(this.x - nx*len, this.y - ny*len);
+    ctx.lineTo(this.x + nx*len, this.y + ny*len);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  hits(x, y, r) {
+    return dist2(this.x, this.y, x, y) < r * r;
+  }
+}
+
+// ─── Player tank ─────────────────────────────────────────────────────────────
+// Coordinate convention used throughout:
+//   angle=0  => tank points UP (negative Y on screen)
+//   forward  => x += sin(angle)*spd,  y -= cos(angle)*spd
+//   turn left (A) => angle decreases,  turn right (D) => angle increases
+//   draw transform: screen_x = cx + lx*cos(a) - ly*sin(a)  (standard 2D rotation)
+//                   screen_y = cy - lx*sin(a) - ly*cos(a)  (flip Y so +local_y = up)
+
+class Player {
+  constructor() {
+    this.fireTimer    = 0;
+    this.fireInterval = 0.35;
+    this.dead         = false;
+    this.reset();
+  }
+
+  reset() {
+    const W = canvas.width, H = canvas.height;
+    this.x  = W / 2;
+    this.y  = H - 80;
+    this.vx = 0; this.vy = 0;
+    this.angle      = 0;   // 0 = pointing up
+    this.invincible = false;
+    this.blinkTimer = 0;
+    this.visible    = true;
+    this.respawning = false;
+  }
+
+  respawn() {
+    this.reset();
+    this.respawning  = true;
+    this.invincible  = true;
+    this.blinkTimer  = 2.8;
+  }
+
+  // Convert a local-space point to screen space.
+  // local +Y = forward (up on screen), local +X = right.
+  toScreen(lx, ly) {
+    const a = this.angle;
+    // Verified: forward=(sin a,-cos a), local +Y maps to forward direction
+    return [
+      this.x + lx * Math.cos(a) + ly * Math.sin(a),
+      this.y + lx * Math.sin(a) - ly * Math.cos(a),
+    ];
+  }
+
+  update(dt, keys) {
+    const TURN   = 150 * Math.PI / 180;
+    const THRUST = 420;
+    const DRAG   = 0.97;
+    const MAXSPD = 600;
+
+    if (keys['KeyA'] || keys['ArrowLeft'])  this.angle -= TURN * dt;  // left = CCW
+    if (keys['KeyD'] || keys['ArrowRight']) this.angle += TURN * dt;  // right = CW
+
+    if (keys['KeyW'] || keys['ArrowUp']) {
+      // forward = +sin(a) in X,  -cos(a) in Y  (screen Y down)
+      this.vx +=  Math.sin(this.angle) * THRUST * dt;
+      this.vy += -Math.cos(this.angle) * THRUST * dt;
+    }
+    if (keys['KeyS'] || keys['ArrowDown']) {
+      this.vx *= 0.88; this.vy *= 0.88;
+    }
+
+    this.vx *= DRAG; this.vy *= DRAG;
+    const spd = Math.hypot(this.vx, this.vy);
+    if (spd > MAXSPD) { this.vx = this.vx/spd*MAXSPD; this.vy = this.vy/spd*MAXSPD; }
+
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+    const W = canvas.width, H = canvas.height;
+    this.x = wrap(this.x, 0, W);
+    this.y = wrap(this.y, 0, H);
+
+    if (this.fireTimer > 0) this.fireTimer -= dt;
+
+    if (this.blinkTimer > 0) {
+      this.blinkTimer -= dt;
+      this.visible = Math.floor(this.blinkTimer / 0.1) % 2 === 0;
+      if (this.blinkTimer <= 0) {
+        this.visible    = true;
+        this.invincible = false;
+        this.respawning = false;
+      }
+    }
+  }
+
+  canFire() { return this.fireTimer <= 0; }
+
+  fire() {
+    this.fireTimer = this.fireInterval;
+    const spd = 540, off = 26;
+    // Bullet spawns at gun tip (local 0, +off = forward)
+    const [fx, fy] = this.toScreen(0, off);
+    return new Bullet(
+      fx, fy,
+       Math.sin(this.angle) * spd + this.vx,
+      -Math.cos(this.angle) * spd + this.vy,
+      true
+    );
+  }
+
+  explode() {
+    spawnExplosion(this.x, this.y, COLOR.playerGreen, 16, 20, 55);
+    this.dead    = true;
+    this.visible = false;
+  }
+
+  draw(thrusting) {
+    if (!this.visible) return;
+    const c  = COLOR.playerGreen;
+    const ts = (pts) => pts.map(([lx,ly]) => this.toScreen(lx,ly));
+
+    // Hull
+    vectorLine(ts([[-14,-10],[14,-10],[14,6],[-14,6]]), c, 1.8, true, true);
+    // Turret
+    vectorLine(ts([[-6,6],[6,6],[6,14],[-6,14]]),       c, 1.8, true, true);
+    // Barrel (points forward, local +Y)
+    vectorLine(ts([[0,14],[0,26]]),                      c, 2.0, false, true);
+    // Tracks
+    vectorLine(ts([[-18,-12],[-18,8]]), c, 4, false, true);
+    vectorLine(ts([[ 18,-12],[ 18,8]]), c, 4, false, true);
+
+    if (thrusting) {
+      const f = 0.8 + Math.random() * 0.4;
+      // Thrust flame behind tank (local -Y = backward)
+      vectorLine(ts([[-5*f,-12],[0,-22*f],[5*f,-12]]),
+        'rgba(255,153,0,0.9)', 1.5, false, true);
+    }
+  }
+
+  hitRadius() { return 14; }
+}
+
+// ─── Enemy tank ───────────────────────────────────────────────────────────────
+const ENEMY_STATES = {ENTERING:0, SEEKING:1, HOOKING:2, TOWING:3, PATROLLING:4};
+
+class Enemy {
+  constructor(wave) {
+    this.wave         = wave;
+    this.x = 0; this.y = 0;
+    this.angle        = 0;
+    this.state        = ENEMY_STATES.ENTERING;
+    this.stateTimer   = 0;
+    this.target       = null;
+    this.exitX = 0; this.exitY = 0;
+    this.patrolCX = 0; this.patrolCY = 0;
+    this.patrolAngle  = 0;
+    this.patrolRadius = rand(120, 200);
+    this.moveSpeed    = 110;
+    this.turnRate     = 120 * Math.PI / 180;
+    this.fireRate     = 0;
+    this.fireTimer    = 0;
+    this.dead         = false;
+    this.color        = COLOR.enemyColors[(wave - 1) % 6];
+  }
+
+  spawnAt(x, y, angle) {
+    this.x = x; this.y = y; this.angle = angle;
+  }
+
+  enterPatrol(px, py) {
+    this.state           = ENEMY_STATES.PATROLLING;
+    this.stateTimer      = 0;
+    this.patrolCX        = px;
+    this.patrolCY        = py;
+    this.patrolRadius    = rand(120, 200);
+    this.patrolCheckTimer = 0;
+    const dx = this.x - px, dy = this.y - py;
+    this.patrolAngle  = Math.atan2(dy, dx);
+  }
+
+  update(dt, canisters, playerX, playerY) {
+    const W = canvas.width, H = canvas.height;
+    this.stateTimer += dt;
+
+    switch (this.state) {
+      case ENEMY_STATES.ENTERING: {
+        const nearest = this.nearestCanister(canisters);
+        const tx = nearest ? nearest.x : W/2;
+        const ty = nearest ? nearest.y : H/2;
+        this.steerToward(tx, ty, dt);
+        const margin = 60;
+        if (this.x > margin && this.x < W-margin &&
+            this.y > margin && this.y < H-margin) {
+          const t = this.assignTarget(canisters);
+          if (t) { this.target = t; this.state = ENEMY_STATES.SEEKING; }
+          else    { this.enterPatrol(playerX, playerY); }
+        }
+        break;
+      }
+      case ENEMY_STATES.SEEKING: {
+        // Re-assign if current target is gone or stolen by another enemy
+        if (!this.target || !this.target.active ||
+            (this.target.towed && this.target.towedBy !== this)) {
+          const t = this.assignTarget(canisters);
+          if (t) { this.target = t; }
+          else   { this.enterPatrol(playerX, playerY); break; }
+        }
+        this.steerToward(this.target.x, this.target.y, dt);
+        if (dist2(this.x,this.y,this.target.x,this.target.y) < 22*22) {
+          this.state = ENEMY_STATES.HOOKING;
+          this.stateTimer = 0;
+        }
+        break;
+      }
+      case ENEMY_STATES.HOOKING: {
+        if (!this.target || !this.target.active) { this.state = ENEMY_STATES.SEEKING; break; }
+        this.steerToward(this.target.x, this.target.y, dt);
+        if (this.stateTimer > 0.4) {
+          this.target.towed   = true;
+          this.target.towedBy = this;
+          this.exitX = this.nearestEdgeX();
+          this.exitY = this.nearestEdgeY();
+          this.state = ENEMY_STATES.TOWING;
+        }
+        break;
+      }
+      case ENEMY_STATES.TOWING: {
+        if (!this.target) { this.state = ENEMY_STATES.SEEKING; break; }
+        this.steerToward(this.exitX, this.exitY, dt);
+        // Drag canister behind
+        // behind = local (0,-22) using verified transform
+        this.target.x = this.x - 22 * Math.sin(this.angle);
+        this.target.y = this.y + 22 * Math.cos(this.angle);
+
+        if (this.x < -30 || this.x > W+30 || this.y < -30 || this.y > H+30) {
+          this.target.stolen();
+          this.target = null;
+          this.dead   = true;
+        }
+        return;  // skip wrap
+      }
+      case ENEMY_STATES.PATROLLING: {
+        // Check for available canisters every 0.5s
+        this.patrolCheckTimer += dt;
+        if (this.patrolCheckTimer >= 0.5) {
+          this.patrolCheckTimer = 0;
+          const t = this.assignTarget(canisters);
+          if (t) { this.target = t; this.state = ENEMY_STATES.SEEKING; this.stateTimer = 0; break; }
+        }
+
+        // All canisters towed — hunt player directly
+        const allTowed = canisters.filter(c => c.active).every(c => c.towed);
+        if (allTowed || this.wave >= 3) {
+          const distToPlayer = Math.hypot(playerX - this.x, playerY - this.y);
+          if (distToPlayer < 200 || allTowed) {
+            this.steerToward(playerX, playerY, dt);
+            break;
+          }
+        }
+
+        // Orbit player position (update center each frame so it never goes stale)
+        this.patrolCX = playerX;
+        this.patrolCY = playerY;
+        this.patrolAngle += (this.moveSpeed / this.patrolRadius) * dt;
+        const tx = this.patrolCX + Math.cos(this.patrolAngle) * this.patrolRadius;
+        const ty = this.patrolCY + Math.sin(this.patrolAngle) * this.patrolRadius;
+        this.steerToward(tx, ty, dt);
+        break;
+      }
+    }
+
+    this.x = wrap(this.x, 0, W);
+    this.y = wrap(this.y, 0, H);
+
+    if (this.fireRate > 0) {
+      this.fireTimer += dt;  // tryLaser resets this when it fires
+    }
+  }
+
+  // Returns a laser flash node or null
+  tryLaser(playerX, playerY) {
+    if (this.fireRate <= 0) return null;
+    // Only fire on cooldown interval
+    if (this.fireTimer < 1.0 / this.fireRate) return null;
+    this.fireTimer = 0;
+
+    const dx = playerX - this.x, dy = playerY - this.y;
+    const d  = Math.hypot(dx, dy);
+    if (d > 120) return null;
+    // Angle check — is enemy roughly facing player?
+    const angleToPlayer = Math.atan2(dx, -dy);
+    const diff = Math.abs(shortestAngle(this.angle, angleToPlayer));
+    if (diff > 50 * Math.PI / 180) return null;
+
+    return { x: this.x, y: this.y, angle: this.angle,
+             len: Math.min(d, 120), color: this.color, life: 0.14 };
+  }
+
+  steerToward(tx, ty, dt) {
+    const dx = tx - this.x, dy = ty - this.y;
+    // In canvas: Y down. "Forward" = -sin(a), -cos(a).
+    // atan2 target: angle where forward aims at target.
+    const desired = Math.atan2(dx, -dy);  // screen: forward=(sin,-cos), so a=atan2(dx,-dy)
+    const delta   = shortestAngle(this.angle, desired);
+    const maxTurn = this.turnRate * dt;
+    this.angle   += Math.sign(delta) * Math.min(Math.abs(delta), maxTurn);
+    this.x +=  Math.sin(this.angle) * this.moveSpeed * dt;
+    this.y += -Math.cos(this.angle) * this.moveSpeed * dt;
+  }
+
+  assignTarget(canisters) {
+    const free = canisters.filter(c => c.active && !c.towed && !c.towedBy && c.dropTimer <= 0);
+    if (!free.length) return null;
+    return free.reduce((best, c) =>
+      dist2(this.x,this.y,c.x,c.y) < dist2(this.x,this.y,best.x,best.y) ? c : best
+    );
+  }
+
+  nearestCanister(canisters) {
+    const active = canisters.filter(c => c.active);
+    if (!active.length) return null;
+    return active.reduce((best, c) =>
+      dist2(this.x,this.y,c.x,c.y) < dist2(this.x,this.y,best.x,best.y) ? c : best
+    );
+  }
+
+  nearestEdgeX() {
+    const W = canvas.width, H = canvas.height;
+    const edges = [
+      {ex: this.x, ey: -20},
+      {ex: this.x, ey: H+20},
+      {ex: -20,    ey: this.y},
+      {ex: W+20,   ey: this.y},
+    ];
+    return edges.reduce((b,e) =>
+      dist2(this.x,this.y,e.ex,e.ey) < dist2(this.x,this.y,b.ex,b.ey) ? e : b
+    ).ex;
+  }
+
+  nearestEdgeY() {
+    const W = canvas.width, H = canvas.height;
+    const edges = [
+      {ex: this.x, ey: -20},
+      {ex: this.x, ey: H+20},
+      {ex: -20,    ey: this.y},
+      {ex: W+20,   ey: this.y},
+    ];
+    return edges.reduce((b,e) =>
+      dist2(this.x,this.y,e.ex,e.ey) < dist2(this.x,this.y,b.ex,b.ey) ? e : b
+    ).ey;
+  }
+
+  hitRadius() { return 13; }
+
+  destroy() {
+    spawnExplosion(this.x, this.y, this.color, 6, 10, 22);
+    if (this.target && this.target.towed && this.target.towedBy === this) {
+      this.target.drop(this.x, this.y);
+    }
+    this.dead = true;
+  }
+
+  draw() {
+    const a = this.color;
+    const T = (pts) => pts.map(([x,y]) => [
+      this.x + x * Math.cos(this.angle) + y * Math.sin(this.angle),
+      this.y + x * Math.sin(this.angle) - y * Math.cos(this.angle),
+    ]);
+
+    // Hull
+    vectorLine(T([[-13,-8],[13,-8],[13,5],[-13,5]]), a, 1.6, true, true);
+    // Barrel
+    vectorLine(T([[0,10],[0,20]]), a, 1.8, false, true);
+    // Tracks
+    vectorLine(T([[-17,-10],[-17,7]]), a, 4, false, true);
+    vectorLine(T([[17,-10],[17,7]]),   a, 4, false, true);
+    // Turret — unique per wave
+    this.drawTurret(T);
+    // Tow hook
+    if (this.state === ENEMY_STATES.TOWING) {
+      vectorLine(T([[-5,-10],[0,-17],[5,-10]]), a, 1.2, false, true);
+    }
+  }
+
+  drawTurret(T) {
+    const a = this.color;
+    const w = this.wave % 6;
+    switch (w) {
+      case 1: vectorLine(T([[-5,5],[5,5],[5,13],[-5,13]]), a, 1.6, true, true); break;
+      case 2: vectorLine(T([[0,14],[7,8],[0,4],[-7,8]]),   a, 1.6, true, true); break;
+      case 3: {
+        const r = 7;
+        const pts = Array.from({length:6},(_,i)=>{
+          const ang=i/6*Math.PI*2;
+          return [Math.cos(ang)*r, Math.sin(ang)*r+9];
+        });
+        vectorLine(T(pts), a, 1.6, true, true);
+        break;
+      }
+      case 4: vectorLine(T([[-7,5],[0,14],[7,5],[3,8],[-3,8]]), a, 1.6, true, true); break;
+      case 5:
+        vectorLine(T([[0,15],[0,4]]),  a, 1.6, false, true);
+        vectorLine(T([[-6,9],[6,9]]), a, 1.6, false, true);
+        break;
+      default: {
+        const r2 = 6;
+        const pts2 = Array.from({length:8},(_,i)=>{
+          const ang=i/8*Math.PI*2;
+          return [Math.cos(ang)*r2, Math.sin(ang)*r2+9];
+        });
+        vectorLine(T(pts2), a, 1.6, true, true);
+      }
+    }
+  }
+}
+
+// ─── Laser flashes ────────────────────────────────────────────────────────────
+const lasers = [];
+
+function drawLasers(dt) {
+  for (let i = lasers.length-1; i >= 0; i--) {
+    const l = lasers[i];
+    l.life -= dt;
+    if (l.life <= 0) { lasers.splice(i,1); continue; }
+    const t = l.life / 0.14;
+    const tipX = l.x + Math.sin(l.angle) * 20;
+    const tipY = l.y - Math.cos(l.angle) * 20;
+    const endX = l.x + Math.sin(l.angle) * (20 + l.len);
+    const endY = l.y - Math.cos(l.angle) * (20 + l.len);
+    ctx.save();
+    ctx.globalAlpha = t;
+    ctx.strokeStyle = l.color;
+    ctx.lineWidth   = 2.5;
+    ctx.lineCap     = 'round';
+    ctx.shadowColor = l.color;
+    ctx.shadowBlur  = 10;
+    ctx.beginPath();
+    ctx.moveTo(tipX, tipY);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+// ─── HUD ─────────────────────────────────────────────────────────────────────
+let msgText = '', msgTimer = 0;
+
+function showMessage(text, dur) { msgText = text; msgTimer = dur; }
+
+function drawHUD(score, wave, canisters) {
+  const W = canvas.width, H = canvas.height;
+  const pad = 18;
+  ctx.save();
+  ctx.font      = `${Math.round(W*0.022)}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+  ctx.fillStyle = COLOR.hudWhite;
+  ctx.textBaseline = 'top';
+
+  ctx.textAlign = 'left';
+  ctx.fillText(`SCORE  ${score}`, pad, pad);
+
+  ctx.textAlign = 'center';
+  ctx.fillText(`WAVE ${wave}`, W/2, pad);
+
+  ctx.textAlign = 'right';
+  ctx.fillText('LIVES  ∞', W - pad, pad);
+
+  ctx.textAlign = 'center';
+  ctx.font      = `${Math.round(W*0.017)}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+  ctx.fillText(`FUEL  ${canisters}`, W/2, pad + Math.round(W*0.028));
+
+  if (msgTimer > 0) {
+    ctx.font      = `${Math.round(W*0.033)}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+    ctx.fillStyle = COLOR.playerGreen;
+    ctx.shadowColor = COLOR.playerGreen;
+    ctx.shadowBlur  = 12;
+    ctx.textAlign   = 'center';
+    ctx.fillText(msgText, W/2, H/2 - 40);
+  }
+
+  ctx.restore();
+}
+
+// ─── Game state machine ───────────────────────────────────────────────────────
+const STATE = {MENU:0, PLAYING:1, GAMEOVER:2};
+let gameState = STATE.MENU;
+
+let score, wave, player, canisters, enemies, bullets;
+let enemiesToSpawn, spawnTimer, spawnInterval;
+let waveInProgress, awaitingRespawn, respawnTimer;
+
+const keys = {};
+let spaceWasDown = false;
+let spaceArmed    = false;  // must release space before firing after game start
+
+document.addEventListener('keydown', e => {
+  keys[e.code] = true;
+  e.preventDefault();
+});
+document.addEventListener('keyup', e => {
+  keys[e.code] = false;
+});
+
+function startGame() {
+  score          = 0;
+  wave           = 0;
+  player         = new Player();
+  canisters      = [];
+  enemies        = [];
+  bullets        = [];
+  enemiesToSpawn = 0;
+  spawnTimer     = 0;
+  spawnInterval  = 1.4;
+  waveInProgress = false;
+  awaitingRespawn = false;
+  respawnTimer   = 0;
+  particles.length = 0;
+  lasers.length    = 0;
+
+  spawnCanisters();
+  startWave();
+  spaceWasDown = true;
+  spaceArmed    = false;  // require space release before first shot
+  gameState = STATE.PLAYING;
+}
+
+function spawnCanisters() {
+  const W = canvas.width, H = canvas.height;
+  const cx = W/2, cy = H/2;
+  const offsets = [
+    [-90,  40], [0,  60], [90,  40],
+    [-90, -40], [0, -60], [90, -40],
+  ];
+  for (const [ox, oy] of offsets) {
+    canisters.push(new Canister(cx + ox, cy - oy));  // -oy: canvas Y down
+  }
+}
+
+function startWave() {
+  wave++;
+  waveInProgress = true;
+  enemiesToSpawn = Math.min(3 + (wave-1)*2, 18);
+  spawnInterval  = Math.max(0.5, 1.4 - (wave-1)*0.08);
+  spawnTimer     = 0;
+  showMessage(`WAVE ${wave}`, 1.8);
+}
+
+function spawnEnemy() {
+  const W = canvas.width, H = canvas.height;
+  const e = new Enemy(wave);
+  e.moveSpeed = 110 + (wave-1)*12;
+  e.turnRate  = (120 + (wave-1)*8) * Math.PI / 180;
+  e.fireRate  = wave >= 2 ? (wave-1)*0.35 : 0;
+
+  const edge = randInt(0, 3);
+  switch (edge) {
+    case 0: e.spawnAt(rand(0,W), -10,  0);          break;
+    case 1: e.spawnAt(rand(0,W), H+10, Math.PI);    break;
+    case 2: e.spawnAt(-10,  rand(0,H), Math.PI/2);  break;
+    case 3: e.spawnAt(W+10, rand(0,H), -Math.PI/2); break;
+  }
+  enemies.push(e);
+}
+
+function checkCollisions() {
+  // Player bullets vs enemies
+  for (let bi = bullets.length-1; bi >= 0; bi--) {
+    const b = bullets[bi];
+    if (!b.isPlayer) continue;
+    for (let ei = enemies.length-1; ei >= 0; ei--) {
+      const e = enemies[ei];
+      if (b.hits(e.x, e.y, e.hitRadius())) {
+        b.dead = true;
+        e.destroy();
+        score += 100;
+        break;
+      }
+    }
+  }
+
+  // Enemy lasers / ram vs player
+  if (!awaitingRespawn && !player.invincible) {
+    for (let ei = enemies.length-1; ei >= 0; ei--) {
+      const e = enemies[ei];
+      // Ram check — both tank and player are destroyed on collision
+      if (dist2(player.x, player.y, e.x, e.y) < (player.hitRadius() + e.hitRadius())**2) {
+        e.destroy();
+        score += 100;
+        enemies.splice(ei, 1);
+        hitPlayer();
+        return;
+      }
+    }
+    // Enemy bullets vs player
+    for (let bi = bullets.length-1; bi >= 0; bi--) {
+      const b = bullets[bi];
+      if (b.isPlayer) continue;
+      if (b.hits(player.x, player.y, player.hitRadius())) {
+        b.dead = true;
+        hitPlayer();
+        return;
+      }
+    }
+  }
+}
+
+function hitPlayer() {
+  if (player.invincible || awaitingRespawn) return;
+  player.explode();
+  awaitingRespawn = true;
+  respawnTimer    = 2.5;
+}
+
+function updatePlaying(dt) {
+  // Player
+  if (!awaitingRespawn && !player.dead) {
+    player.update(dt, keys);
+
+    const spaceDown = !!keys['Space'];
+    if (!spaceDown) spaceArmed = true;          // armed once released
+    if (spaceDown && spaceArmed && player.canFire()) {
+      bullets.push(player.fire());
+    }
+    spaceWasDown = spaceDown;
+  } else if (awaitingRespawn) {
+    respawnTimer -= dt;
+    if (respawnTimer <= 0) {
+      awaitingRespawn = false;
+      player.dead     = false;
+      spaceArmed      = false;  // require re-press after respawn too
+      player.respawn();
+    }
+  }
+
+  // Bullets
+  for (const b of bullets) b.update(dt);
+  bullets = bullets.filter(b => !b.dead);
+
+  // Enemy spawning
+  if (waveInProgress && enemiesToSpawn > 0) {
+    spawnTimer += dt;
+    if (spawnTimer >= spawnInterval) {
+      spawnTimer = 0;
+      enemiesToSpawn--;
+      spawnEnemy();
+    }
+  }
+
+  // Enemy AI
+  const activeCanisters = canisters.filter(c => c.active);
+  const px = awaitingRespawn ? canvas.width/2  : player.x;
+  const py = awaitingRespawn ? canvas.height/2 : player.y;
+
+  for (const e of enemies) {
+    e.update(dt, activeCanisters, px, py);
+
+    // Short-range laser
+    if (!awaitingRespawn && !player.invincible) {
+      const laser = e.tryLaser(player.x, player.y);
+      if (laser) {
+        lasers.push(laser);
+        hitPlayer();   // tryLaser already checks range and facing angle
+      }
+    }
+  }
+  enemies = enemies.filter(e => !e.dead);
+
+  // Canisters
+  for (const c of canisters) c.update(dt);
+
+  // Collisions
+  checkCollisions();
+
+  // Message timer
+  if (msgTimer > 0) msgTimer -= dt;
+
+  // Wave clear
+  if (waveInProgress && enemiesToSpawn === 0 && enemies.length === 0) {
+    waveInProgress = false;
+    const remaining = canisters.filter(c => c.active).length;
+    if (remaining === 0) { endGame(); return; }
+    const bonus = remaining * 50;
+    score += bonus;
+    showMessage(`WAVE CLEAR  +${bonus}`, 2.0);
+    setTimeout(() => { if (gameState === STATE.PLAYING) startWave(); }, 2500);
+  }
+
+  // Game over — all canisters stolen
+  if (canisters.filter(c => c.active).length === 0) {
+    endGame();
+  }
+
+  updateParticles(dt);
+}
+
+function endGame() {
+  gameState = STATE.GAMEOVER;
+}
+
+// ─── Draw scenes ─────────────────────────────────────────────────────────────
+function drawMenu() {
+  const W = canvas.width, H = canvas.height;
+  drawStars();
+
+  // Border
+  ctx.save();
+  ctx.strokeStyle = 'rgba(200,200,200,0.2)';
+  ctx.lineWidth   = 1;
+  ctx.strokeRect(2, 2, W-4, H-4);
+  ctx.restore();
+
+  const cx = W/2;
+  ctx.save();
+  ctx.textAlign   = 'center';
+  ctx.textBaseline = 'middle';
+
+  // Title
+  const t = Date.now()/900;
+  ctx.globalAlpha = 0.6 + 0.4 * Math.abs(Math.sin(t));
+  ctx.font        = `${Math.round(W*0.085)}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+  ctx.fillStyle   = COLOR.playerGreen;
+  ctx.shadowColor = COLOR.playerGreen;
+  ctx.shadowBlur  = 20;
+  ctx.fillText('RIP OFF', cx, H*0.38);
+
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur  = 0;
+  ctx.font        = `${Math.round(W*0.021)}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+  ctx.fillStyle   = COLOR.dimWhite;
+  ctx.fillText('Defend the fuel canisters', cx, H*0.47);
+
+  const lines = ['W / S  —  Forward / Brake', 'A / D  —  Turn Left / Right', 'SPACE  —  Fire'];
+  ctx.font  = `${Math.round(W*0.018)}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+  ctx.fillStyle = 'rgba(220,220,220,0.7)';
+  lines.forEach((l, i) => ctx.fillText(l, cx, H*0.555 + i * H*0.04));
+
+  const bt = Date.now()/500;
+  ctx.globalAlpha = 0.2 + 0.8 * Math.abs(Math.sin(bt));
+  ctx.font        = `${Math.round(W*0.024)}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+  ctx.fillStyle   = COLOR.canisterCyan;
+  ctx.shadowColor = COLOR.canisterCyan;
+  ctx.shadowBlur  = 12;
+  ctx.fillText('PRESS SPACE TO START', cx, H*0.72);
+
+  ctx.globalAlpha = 0.35;
+  ctx.shadowBlur  = 0;
+  ctx.font        = `${Math.round(W*0.013)}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+  ctx.fillStyle   = COLOR.dimWhite;
+  ctx.fillText('Inspired by Cinematronics (1980)', cx, H*0.94);
+  ctx.restore();
+}
+
+function drawPlaying() {
+  const W = canvas.width, H = canvas.height;
+  drawStars();
+
+  // Border
+  ctx.save();
+  ctx.strokeStyle = 'rgba(200,200,200,0.2)';
+  ctx.lineWidth   = 1;
+  ctx.strokeRect(2, 2, W-4, H-4);
+  ctx.restore();
+
+  // Canisters
+  for (const c of canisters) c.draw();
+
+  // Enemies
+  for (const e of enemies) e.draw();
+
+  // Lasers
+  drawLasers(lastFrameDt);
+
+  // Bullets
+  for (const b of bullets) b.draw();
+
+  // Player
+  if (!awaitingRespawn && !player.dead) {
+    player.draw(!!keys['KeyW'] || !!keys['ArrowUp']);
+  }
+
+  // Particles
+  drawParticles();
+
+  // HUD
+  const remaining = canisters.filter(c => c.active).length;
+  drawHUD(score, wave, remaining);
+}
+
+function drawGameOver() {
+  const W = canvas.width, H = canvas.height;
+  drawStars();
+
+  ctx.save();
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+
+  ctx.font      = `${Math.round(W*0.065)}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+  ctx.fillStyle = COLOR.enemyColors[0];
+  ctx.shadowColor = COLOR.enemyColors[0];
+  ctx.shadowBlur  = 20;
+  ctx.fillText('GAME OVER', W/2, H*0.35);
+
+  ctx.shadowBlur = 0;
+  ctx.font       = `${Math.round(W*0.028)}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+  ctx.fillStyle  = COLOR.hudWhite;
+  ctx.fillText(`SCORE  ${score}`, W/2, H*0.47);
+
+  ctx.font      = `${Math.round(W*0.02)}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+  ctx.fillStyle = COLOR.dimWhite;
+  ctx.fillText(`WAVES SURVIVED  ${wave}`, W/2, H*0.54);
+
+  const bt = Date.now()/500;
+  ctx.globalAlpha = 0.2 + 0.8 * Math.abs(Math.sin(bt));
+  ctx.font        = `${Math.round(W*0.022)}px "Helvetica Neue", Helvetica, Arial, sans-serif`;
+  ctx.fillStyle   = COLOR.canisterCyan;
+  ctx.shadowColor = COLOR.canisterCyan;
+  ctx.shadowBlur  = 12;
+  ctx.fillText('PRESS SPACE TO PLAY AGAIN', W/2, H*0.65);
+  ctx.restore();
+}
+
+// ─── Main loop ────────────────────────────────────────────────────────────────
+let lastTime = 0;
+let lastFrameDt = 0;
+
+function loop(ts) {
+  requestAnimationFrame(loop);
+  const dt  = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime  = ts;
+  lastFrameDt = dt;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  const spaceDown = !!keys['Space'];
+
+  switch (gameState) {
+    case STATE.MENU:
+      drawMenu();
+      if (spaceDown && !spaceWasDown) startGame();
+      break;
+
+    case STATE.PLAYING:
+      if (dt > 0) updatePlaying(dt);
+      // Update laser timers here (dt based)
+      for (let i = lasers.length-1; i >= 0; i--) {
+        // already ticked in drawLasers — skip double tick
+      }
+      drawPlaying();
+      break;
+
+    case STATE.GAMEOVER:
+      drawGameOver();
+      if (spaceDown && !spaceWasDown) {
+        gameState = STATE.MENU;
+      }
+      break;
+  }
+
+  spaceWasDown = spaceDown;
+}
+
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
